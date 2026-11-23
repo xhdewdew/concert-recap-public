@@ -763,6 +763,12 @@
         datesBox.innerHTML = `<input type="date" name="date" value="${esc(pre.date)}" required min="2000-01-01" max="2099-12-31" aria-label="관람일">`;
         return;
       }
+      // 날짜 칸(#add-day)은 한 번 만들고 다시 그리지 않는다.
+      // 아이폰은 빈 날짜 칸을 누르자마자 '오늘'을 넣고 change를 보내는데,
+      // 그때 칸을 새로 그리면 달력이 닫혀 버려서 오늘로 고정되던 문제가 있었다.
+      if (!datesBox.querySelector('#add-day')) {
+        datesBox.innerHTML = '<div class="dates-top"></div><label class="add-day"><span></span><input type="date" id="add-day" min="2000-01-01" max="2099-12-31"></label><div class="dates-note"></div>';
+      }
       const list = period ? K.days(period.from, period.to, 14) : null;
       const others = [...selected].filter((x) => !list || !list.includes(x)).sort();
       let h = '';
@@ -771,16 +777,28 @@
         h += `<div class="days">${list.map((x) => `<label class="day"><input type="checkbox" value="${x}"${selected.has(x) ? ' checked' : ''}><b>${U.md(x)}</b><span>${U.weekday(x)}</span></label>`).join('')}</div>`;
       }
       if (others.length) h += `<div class="chips">${others.map((x) => `<span class="chip">${U.md(x)} ${U.weekday(x)}<button type="button" data-del="${x}" aria-label="${U.dots(x)} 빼기">×</button></span>`).join('')}</div>`;
-      h += `<label class="add-day"><span>${list ? '다른 날' : selected.size ? '하루 더' : '날짜'}</span><input type="date" id="add-day" min="2000-01-01" max="2099-12-31"></label>`;
-      if (selected.size > 1) h += `<p class="period">${selected.size}일 → 기록 ${selected.size}개로 저장</p>`;
-      datesBox.innerHTML = h;
+      datesBox.querySelector('.dates-top').innerHTML = h;
+      datesBox.querySelector('.add-day span').textContent = list ? '다른 날' : selected.size ? '하루 더' : '날짜';
+      datesBox.querySelector('.dates-note').innerHTML = selected.size > 1 ? `<p class="period">${selected.size}일 → 기록 ${selected.size}개로 저장</p>` : '';
       const costLbl = f.cost && f.cost.closest('label').querySelector('span');
       if (costLbl) costLbl.textContent = selected.size > 1 ? '하루당 낸 금액 (원)' : '내가 낸 금액 (원)';
     };
     drawDates();
+    // 달력을 한 번 여는 동안(누름 → 닫힘) 바뀐 날짜는 '추가'가 아니라 '교체'로 본다.
+    // 그래야 아이폰이 먼저 넣은 '오늘'이나, 연도를 치는 중간값이 쌓이지 않는다.
+    let pending = null; // { v: 이번에 넣은 날짜, isNew: 원래는 없던 날짜인지 }
+    // 새로 시작: 칸을 다시 누를 때(안드로이드는 고른 뒤에도 칸에 포커스가 남음), 칸에서 나갈 때.
+    // focusin은 쓰지 않는다 — 브라우저에 따라 값이 바뀔 때도 다시 오기 때문.
+    datesBox.addEventListener('pointerdown', (e) => { if (e.target.id === 'add-day') pending = null; });
+    datesBox.addEventListener('focusout', (e) => { if (e.target.id === 'add-day') { pending = null; e.target.value = ''; } });
     datesBox.addEventListener('change', (e) => {
       const t = e.target;
-      if (t.id === 'add-day') { if (U.isDate(t.value)) selected.add(t.value); drawDates(); }
+      if (t.id === 'add-day') {
+        if (pending && pending.isNew && pending.v !== t.value) selected.delete(pending.v);
+        pending = null;
+        if (U.isDate(t.value)) { pending = { v: t.value, isNew: !selected.has(t.value) }; selected.add(t.value); }
+        drawDates();
+      }
       else if (t.type === 'checkbox') { t.checked ? selected.add(t.value) : selected.delete(t.value); drawDates(); }
       else if (t.name === 'date') { pre.date = t.value; }
       dupConfirmed = false;
