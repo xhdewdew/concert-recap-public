@@ -273,7 +273,7 @@
         ctx.fillText(`${list.max}회${list.top.length > 1 ? ` · 공동 ${list.top.length}${unitWord}` : ''}`, x, y + 98);
       }
     });
-    y += 150;
+    y += 196; // 아래 가로선과 위 칸들 사이 간격을 맞춤 (글자 아래 약 54px)
 
     // 월별
     ctx.fillStyle = t.rule; ctx.fillRect(M, y - 44, W - M * 2, 2);
