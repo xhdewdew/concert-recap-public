@@ -1,0 +1,16 @@
+{
+  "name": "2026 CONCERT RECAP",
+  "short_name": "공연 기록",
+  "description": "2026년에 본 공연을 기록하고 포스터와 숫자로 돌아보는 개인 공연 노트",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#E8E7E3",
+  "theme_color": "#E8E7E3",
+  "lang": "ko",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
