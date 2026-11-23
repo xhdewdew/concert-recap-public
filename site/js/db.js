@@ -49,6 +49,29 @@
 
   let dbp = null;
   let memory = null; // IndexedDB를 못 쓰는 브라우저용 임시 저장
+  // 사파리 개인정보 보호(비공개) 모드는 IndexedDB에 이미지(Blob)를 넣지 못한다.
+  // 그럴 땐 이미지를 바이트(ArrayBuffer)로 바꿔 넣는다. 이 모드는 창을 닫으면 기록도 지워진다.
+  let blobRefused = false;
+  const mem = new Map(); // 브라우저가 끝내 저장을 거부한 포스터 (이 창에서만)
+
+  function probeBlob(db) {
+    return new Promise((res) => {
+      let settled = false;
+      const end = (refused) => { if (settled) return; settled = true; if (refused) blobRefused = true; res(); };
+      try {
+        const t = db.transaction(STORE, 'readwrite');
+        const r = t.objectStore(STORE).put(new Blob(['x'], { type: 'text/plain' }), '__probe__');
+        r.onerror = (e) => { if (e && e.preventDefault) e.preventDefault(); };
+        t.oncomplete = () => {
+          try { db.transaction(STORE, 'readwrite').objectStore(STORE).delete('__probe__'); } catch (e) { /* 무시 */ }
+          end(false);
+        };
+        t.onerror = () => end(true);
+        t.onabort = () => end(true);
+      } catch (e) { end(true); }
+      setTimeout(() => end(false), 1500);
+    });
+  }
   function open() {
     if (dbp) return dbp;
     dbp = new Promise((resolve) => {
@@ -62,7 +85,11 @@
         if (!idb) { fallback(); return; }
         const req = idb.open(DBNAME, 1);
         req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-        req.onsuccess = () => { if (done) { try { req.result.close(); } catch (e) { /* 무시 */ } return; } finish(req.result); };
+        req.onsuccess = () => {
+          if (done) { try { req.result.close(); } catch (e) { /* 무시 */ } return; }
+          const db = req.result;
+          probeBlob(db).then(() => finish(db));
+        };
         req.onerror = fallback;
         req.onblocked = fallback;
       } catch (e) {
@@ -84,16 +111,36 @@
       t.onabort = () => reject(t.error);
     });
   }
-  const putPoster = (id, blob) => tx('readwrite', (s) => (s ? s.put(blob, id) : memory.set(id, blob)));
+  async function toBuffer(blob) {
+    if (blob.arrayBuffer) return blob.arrayBuffer();
+    return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsArrayBuffer(blob); });
+  }
+  async function putPoster(id, blob) {
+    await open();
+    if (!blobRefused) {
+      try { await tx('readwrite', (s) => (s ? s.put(blob, id) : memory.set(id, blob))); mem.delete(id); return; }
+      catch (e) { blobRefused = true; }
+    }
+    try {
+      const buf = await toBuffer(blob);
+      await tx('readwrite', (s) => (s ? s.put({ buf, type: blob.type || 'image/jpeg' }, id) : memory.set(id, blob)));
+      mem.delete(id);
+    } catch (e) {
+      mem.set(id, blob); // 마지막 방법: 이 창에서만 보관
+    }
+  }
   const getPoster = async (id) => {
+    if (mem.has(id)) return mem.get(id);
     const db = await open();
-    if (!db) return memory.get(id) || null;
-    return tx('readonly', (s) => s.get(id));
+    const v = db ? await tx('readonly', (s) => s.get(id)) : (memory.get(id) || null);
+    if (v && v.buf && !(v instanceof Blob)) return new Blob([v.buf], { type: v.type || 'image/jpeg' });
+    return v || null;
   };
-  const delPoster = (id) => tx('readwrite', (s) => (s ? s.delete(id) : memory.delete(id)));
-  const clearPosters = () => tx('readwrite', (s) => (s ? s.clear() : memory.clear()));
+  const delPoster = (id) => { mem.delete(id); return tx('readwrite', (s) => (s ? s.delete(id) : memory.delete(id))); };
+  const clearPosters = () => { mem.clear(); return tx('readwrite', (s) => (s ? s.clear() : memory.clear())); };
   const usesMemory = () => !!memory;
   const canPersist = () => lsOK && !memory;
+  const isPrivate = () => blobRefused; // 사파리 개인정보 보호 모드로 보임
 
   async function persist() {
     try {
@@ -102,5 +149,5 @@
     return false;
   }
 
-  window.CR.db = { load, save, blank, open, putPoster, getPoster, delPoster, clearPosters, persist, usesMemory, canPersist, KEY };
+  window.CR.db = { load, save, blank, open, putPoster, getPoster, delPoster, clearPosters, persist, usesMemory, canPersist, isPrivate, KEY };
 })();

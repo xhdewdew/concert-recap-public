@@ -218,6 +218,7 @@
     const real = state.records.filter((r) => r.source !== 'sample').length;
     if (real >= 3 && Date.now() - (state.lastBackup || 0) > 14 * 864e5) out.push(`<div class="alert"><span>백업한 지 2주가 넘었어요.</span><span class="acts"><button class="btn" data-act="backup">지금 백업</button></span></div>`);
     if (!DB.canPersist()) out.push(`<div class="alert"><span>이 화면에서는 기록이 저장되지 않아요${IN_FRAME ? ' (미리보기)' : ' (개인정보 보호 모드)'}.</span></div>`);
+    else if (DB.isPrivate()) out.push(`<div class="alert"><span>개인정보 보호 모드예요. 이 창을 닫으면 기록이 지워져요. 일반 창에서 열어 주세요.</span>${real ? '<span class="acts"><button class="btn" data-act="backup">지금 백업</button></span>' : ''}</div>`);
     return out.length ? `<section class="alerts" aria-label="알림">${out.join('')}</section>` : '';
   }
 
@@ -1460,7 +1461,7 @@
 
   function init() {
     applyTheme();
-    DB.open().then(() => { if (!DB.canPersist() && state.nickname && location.hash !== '#recap') render(); });
+    DB.open().then(() => { if ((!DB.canPersist() || DB.isPrivate()) && state.nickname && location.hash !== '#recap') render(); });
     DB.persist();
     render();
   }
