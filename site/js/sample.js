@@ -88,11 +88,19 @@
     return new Promise((res) => c.toBlob(res, 'image/jpeg', 0.86));
   }
 
-  async function build() {
+  // 예시는 2026년 기준으로 적어 두고, 고른 연도로 날짜를 옮긴다.
+  // 상태: 지난 해는 모두 관람 완료, 올해는 오늘 기준(지난 날 완료·다가올 날 예정), 내년 이후는 예시 그대로. 취소는 그대로.
+  async function build(year, today) {
+    const Y = String(year || 2026);
     const out = [];
     const now = Date.now();
     for (let i = 0; i < LIST.length; i++) {
-      const [date, title, artists, venue, vendor, cost, status, memo, shape] = LIST[i];
+      const row = LIST[i];
+      const date = Y + row[0].slice(4);
+      const title = row[1].replace(/2026/g, Y);
+      const [, , artists, venue, vendor, cost, status0, memo, shape] = row;
+      const ty = today ? today.slice(0, 4) : Y;
+      const status = status0 === 'canceled' ? status0 : Y < ty ? 'done' : Y === ty ? (date > today ? 'planned' : 'done') : status0;
       out.push({
         id: U.uid(), title, artists, date, venue, vendor, vendorOther: '', cost, status, memo,
         shape, posterId: null, posterRatio: null, source: 'sample', createdAt: now + i, updatedAt: now + i,

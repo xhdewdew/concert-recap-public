@@ -3,7 +3,10 @@
   'use strict';
   const { util: U, stats: S, parse: P, theme: T, db: DB, kopis: K, sample: SAMPLE, render: R } = window.CR;
 
-  const YEAR = 2026;
+  // 기록할 연도: 처음 시작할 때 고르고, 백업·설정에서 바꾼다. 예전 기록(연도 없음)은 2026.
+  const THIS_YEAR = new Date().getFullYear();
+  const year = () => { const y = Number(state && state.year); return y >= 2000 && y <= 2100 ? y : 2026; };
+  const yy = (y) => `${String(y).slice(0, 2)}<sup>${String(y).slice(2)}</sup>`;
   const VENDORS = { nol: 'NOL 티켓 (구 인터파크)', ticketlink: '티켓링크', melon: '멜론티켓', yes24: 'YES24 티켓', other: '기타' };
   const STATUS = { done: '관람 완료', planned: '관람 예정', canceled: '취소·환불' };
   const TESS_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
@@ -20,7 +23,7 @@
   function save() {
     if (DB.save(state) === 'full') toast('저장 공간이 가득 찼어요. 백업 후 오래된 포스터를 지워 주세요.');
   }
-  function stats() { return S.compute(state.records, { year: YEAR, today: U.todayStr(), dupIgnore: state.dupIgnore }); }
+  function stats() { return S.compute(state.records, { year: year(), today: U.todayStr(), dupIgnore: state.dupIgnore }); }
   function nick() { return (state.nickname || '').trim() || '나'; }
 
   let toastTimer;
@@ -148,7 +151,7 @@
 
   function galleryRecords() {
     return state.records
-      .filter((r) => U.isDate(r.date) && r.date.slice(0, 4) === String(YEAR) && r.status !== 'canceled')
+      .filter((r) => U.isDate(r.date) && r.date.slice(0, 4) === String(year()) && r.status !== 'canceled')
       .sort(byDate);
   }
 
@@ -157,10 +160,13 @@
     document.body.classList.remove('recap-page');
     app.innerHTML = `
       <main class="onboard">
-        <div class="onboard-mast" aria-hidden="true">2026</div>
+        <div class="onboard-mast" aria-hidden="true" id="ob-mast">${THIS_YEAR}</div>
         <div class="onboard-body">
-          <h1>2026년 공연 기록</h1>
+          <h1 id="ob-title">${THIS_YEAR}년 공연 기록</h1>
           <form id="nick-form" novalidate>
+            <fieldset class="field" style="border:0;margin:0;padding:0"><legend>몇 년도 공연을 기록할까요?</legend>
+              <div class="seg">${[THIS_YEAR - 1, THIS_YEAR, THIS_YEAR + 1].map((v) => `<label><input type="radio" name="year" value="${v}"${v === THIS_YEAR ? ' checked' : ''}>${v}</label>`).join('')}</div>
+            </fieldset>
             <label class="field"><span>닉네임</span>
               <input type="text" name="nick" maxlength="20" autocomplete="nickname" placeholder="리캡에 들어갈 이름" required>
             </label>
@@ -174,9 +180,15 @@
         <p class="onboard-foot">기록은 이 기기에만 저장돼요.</p>
       </main>`;
     const form = document.getElementById('nick-form');
+    const pickedYear = () => Number((form.querySelector('input[name=year]:checked') || {}).value) || THIS_YEAR;
+    form.querySelectorAll('input[name=year]').forEach((x) => x.addEventListener('change', () => {
+      document.getElementById('ob-mast').textContent = pickedYear();
+      document.getElementById('ob-title').textContent = `${pickedYear()}년 공연 기록`;
+    }));
     const go = async (withSample) => {
       const v = form.nick.value.trim();
       if (!v && !withSample) { document.getElementById('nick-err').hidden = false; form.nick.focus(); return; }
+      state.year = pickedYear();
       state.nickname = v || '공연 일기';
       save();
       if (withSample) await loadSample();
@@ -189,7 +201,7 @@
 
   async function loadSample() {
     toast('예시 기록을 만드는 중이에요');
-    const { records, posters } = await SAMPLE.build();
+    const { records, posters } = await SAMPLE.build(year(), U.todayStr());
     for (const [id, blob] of posters) await DB.putPoster(id, blob);
     state.records = state.records.concat(records);
     state.sample = true;
@@ -278,7 +290,7 @@
     const all = state.records.slice().sort(byDate);
     const f = ledgerFilter;
     const rows = all.filter((r) => {
-      const other = !(U.isDate(r.date) && r.date.slice(0, 4) === String(YEAR));
+      const other = !(U.isDate(r.date) && r.date.slice(0, 4) === String(year()));
       if (f === 'all') return true;
       if (f === 'other') return other;
       return !other && r.status === f;
@@ -286,16 +298,16 @@
     const btn = (k, l) => `<button class="btn quiet" data-act="filter" data-f="${k}" aria-pressed="${f === k}">${l}</button>`;
     return `<section class="ledger" id="ledger" aria-labelledby="ledger-title">
       <div class="ledger-head"><h2 id="ledger-title">전체 기록 <small style="font-size:var(--f-s);color:var(--muted);font-weight:500">${state.records.length}건</small></h2>
-        <div class="filters">${btn('all', '전체')}${btn('done', '관람 완료')}${btn('planned', '관람 예정')}${btn('canceled', '취소·환불')}${btn('other', '2026년 외')}</div></div>
+        <div class="filters">${btn('all', '전체')}${btn('done', '관람 완료')}${btn('planned', '관람 예정')}${btn('canceled', '취소·환불')}${btn('other', `${year()}년 외`)}</div></div>
       ${rows.length ? `<ol>${rows.map((r) => {
-        const other = !(U.isDate(r.date) && r.date.slice(0, 4) === String(YEAR));
+        const other = !(U.isDate(r.date) && r.date.slice(0, 4) === String(year()));
         const st = other ? 'year' : r.status;
         return `<li><button data-act="detail" data-id="${r.id}">
           <span class="l-date">${U.dots(r.date) || '날짜 없음'} ${U.weekday(r.date)}</span>
           <span class="l-title">${esc(r.title)}<small>${esc((r.artists || []).join(', '))}</small></span>
           <span class="l-venue">${esc(r.venue)}</span>
           <span class="l-cost">${U.isNum(r.cost) ? U.won(r.cost) : '<span style="color:var(--muted)">금액 미입력</span>'}</span>
-          <span class="l-status ${st}">${other ? '2026년 외' : STATUS[r.status] || ''}</span>
+          <span class="l-status ${st}">${other ? `${year()}년 외` : STATUS[r.status] || ''}</span>
         </button></li>`;
       }).join('')}</ol>` : '<p class="help">이 조건에 맞는 기록이 없어요.</p>'}
     </section>`;
@@ -317,9 +329,9 @@
         </nav>
       </header>
       <section class="hero" aria-labelledby="hero-title">
-        <div class="mast26" aria-hidden="true">2026<i class="sq-in"></i></div>
+        <div class="mast26" aria-hidden="true">${year()}<i class="sq-in"></i></div>
         <div class="hero-title">
-          <h1 id="hero-title">${n}의<br>2026년 공연</h1>
+          <h1 id="hero-title">${n}의<br>${year()}년 공연</h1>
         </div>
         <dl class="hero-stats">
           <div class="stat big"><dt>관람</dt><dd>${st.count}<small>회</small></dd></div>
@@ -328,7 +340,7 @@
           <div class="stat"><dt>아티스트</dt><dd>${st.artistCount}<small>팀</small></dd></div>
         </dl>
         <div class="hero-cta">
-          ${st.count ? '<a class="btn-solid" href="#recap">2026 CONCERT RECAP</a>' : '<button class="btn-solid" data-act="import">캡처로 추가</button>'}
+          ${st.count ? `<a class="btn-solid" href="#recap">${year()} CONCERT RECAP</a>` : '<button class="btn-solid" data-act="import">캡처로 추가</button>'}
         </div>
       </section>
       ${alertsHTML(st)}
@@ -361,7 +373,7 @@
     const peak = new Set(st.peakMonths);
     const pm = st.peakMonths[0];
     const note = st.peakMonths.length > 1 ? `${st.peakMonths.join(', ')}월에 ${st.monthMax}회씩` : `${pm}월, 가장 많이 본 달`;
-    return `<div class="pchart" id="pchart" role="group" aria-label="2026년 월별 관람 포스터">
+    return `<div class="pchart" id="pchart" role="group" aria-label="${year()}년 월별 관람 포스터">
       ${byMonth.map((list, i) => `<div class="pc-col${peak.has(i + 1) ? ' peak' : ''}" data-n="${list.length}" data-m="${i + 1}">
         ${list.map((r) => `<button class="pc-tile" data-act="detail" data-id="${r.id}" aria-label="${U.md(r.date)} ${esc(r.title)}" title="${U.md(r.date)} ${esc(r.title)}">${r.posterId ? `<img data-poster="${r.posterId}" alt="">` : '<span class="fallback"></span>'}</button>`).join('')}
         ${list.length ? `<span class="pc-cnt">${list.length}</span>` : ''}
@@ -446,7 +458,7 @@
       anno = `<path class="lead" d="M${px.toFixed(1)} ${(py - 24).toFixed(1)} V18 H${tx.toFixed(1)}"></path>
         <text class="anno" x="${(right ? tx + 6 : tx - 6).toFixed(1)}" y="22" text-anchor="${right ? 'start' : 'end'}">${note}</text>`;
     }
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="group" aria-label="2026년 월별 관람 횟수">
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="group" aria-label="${year()}년 월별 관람 횟수">
       ${anno}${g}<line class="base" x1="0" x2="${W}" y1="${base + 0.75}" y2="${base + 0.75}"></line></svg>`;
   }
 
@@ -488,9 +500,9 @@
       </header>
       <section class="recap-head">
         <div>
-          <h1>${n}의 2026년<br>콘서트 기록</h1>
+          <h1>${n}의 ${year()}년<br>콘서트 기록</h1>
         </div>
-        <div class="year-mark" aria-hidden="true">20<sup>26</sup></div>
+        <div class="year-mark" aria-hidden="true">${yy(year())}</div>
       </section>
       ${empty ? `<div class="empty"><h2>관람 완료한 공연이 없어요</h2><div class="row"><button class="btn-solid" data-act="import">캡처로 추가</button></div></div>` : `
       <section class="recap-stats" aria-label="올해의 숫자">
@@ -533,7 +545,7 @@
       <details class="basis">
         <summary>계산 기준</summary>
         <dl>
-          <dt>관람</dt><dd>2026년 관람 완료 1건 = 1회 (2매 예매도 1회, 이틀 보면 2회)</dd>
+          <dt>관람</dt><dd>${year()}년 관람 완료 1건 = 1회 (2매 예매도 1회, 이틀 보면 2회)</dd>
           <dt>제외</dt><dd>예정 ${st.excludedCount.planned || 0} · 취소 ${st.excludedCount.canceled || 0} · 다른 해 ${st.excludedCount.year || 0}${st.excludedCount.nodate ? ` · 날짜 없음 ${st.excludedCount.nodate}` : ''}</dd>
           <dt>지출</dt><dd>관람 완료 기록의 본인 부담 금액 합${st.missingCost.length ? ` (미입력 ${st.missingCost.length}건 제외)` : ''}</dd>
           <dt>중복</dt><dd>${st.duplicates.length ? `${st.duplicates.length}묶음 <button class="btn" data-act="dups">확인</button>` : '없음'}</dd>
@@ -711,7 +723,7 @@
       input: '#a-q', list: '#a-list', go: '#a-go',
       local: (q) => [...new Set(state.records.flatMap((r) => r.artists || []).concat([...castPool]))]
         .filter((x) => has(x, q) && !artists.some((y) => S.norm(y) === S.norm(x))).slice(0, 8).map((x) => ({ value: x, label: x })),
-      remote: (q) => K.artistSearch(q, [...selected].sort()[0] || (datesBox.querySelector('input[name=date]') || {}).value || '')
+      remote: (q) => K.artistSearch(q, [...selected].sort()[0] || (datesBox.querySelector('input[name=date]') || {}).value || '', year())
         .then((r) => r.map((x) => ({ value: x.name, label: x.name, meta: `KOPIS 공연 ${x.shows}건` }))),
       pick: (r) => addArtist(r.value),
     });
@@ -885,7 +897,7 @@
       if (!q) { kq.focus(); return; }
       kres.innerHTML = '<p class="help">찾는 중…</p>';
       const first = rec ? (datesBox.querySelector('input[name=date]') || {}).value : [...selected].sort()[0];
-      try { drawResults(await K.searchAll({ title: q, date: first || '', venue: f.venue.value })); }
+      try { drawResults(await K.searchAll({ title: q, date: first || '', venue: f.venue.value, year: year() })); }
       catch (e) { const r = K.why(e); kres.innerHTML = `<p class="help">KOPIS에 연결하지 못했어요${r ? ` · ${esc(r)}` : ''}</p>`; }
     };
     d.querySelector('#k-go').addEventListener('click', runSearch);
@@ -974,7 +986,7 @@
   function openDetail(id) {
     const r = state.records.find((x) => x.id === id);
     if (!r) return;
-    const other = !(U.isDate(r.date) && r.date.slice(0, 4) === String(YEAR));
+    const other = !(U.isDate(r.date) && r.date.slice(0, 4) === String(year()));
     const key = S.showKey(r);
     const same = state.records.filter((x) => S.showKey(x) === key && x.status === 'done').sort(byDate);
     const span = r.period ? K.days(r.period.from, r.period.to, 400) : null;
@@ -1044,7 +1056,7 @@
       try {
         const prepared = await processImage(file, 2400);
         const text = await ocr(prepared.blob, (p) => { bar.style.width = Math.max(8, Math.round(p * 90)) + '%'; msg.textContent = `글자 읽는 중 ${Math.round(p * 100)}%`; });
-        const res = P.parseBooking(text, { today: U.todayStr(), year: YEAR });
+        const res = P.parseBooking(text, { today: U.todayStr(), year: year() });
         msg.textContent = 'KOPIS에서 공연 찾는 중…'; bar.style.width = '95%';
         const kopis = await findOnKopis(res.fields, text);
         d.close();
@@ -1066,7 +1078,7 @@
       title = lines.sort((x, y) => y.length - x.length)[0] || '';
     }
     if (!title) return null;
-    try { return await K.searchAll({ title, date: fields.date || '', venue: fields.venue || '', year: YEAR }); }
+    try { return await K.searchAll({ title, date: fields.date || '', venue: fields.venue || '', year: year() }); }
     catch (e) { return null; }
   }
 
@@ -1113,13 +1125,13 @@
         <div class="swatches" role="group" aria-label="색 조합">${T.PRESETS.map((p) => {
           const tk = T.tokens(p.accent, p.bg);
           return `<button class="swatch" type="button" data-preset="${p.id}" aria-pressed="${state.theme.preset === p.id}" style="--sw-bg:${p.bg};--sw-a:${tk.accentLarge};--sw-ink:${tk.ink}">
-            <span class="chip-a"></span><span class="big" aria-hidden="true">26</span><span class="nm">${p.name}</span></button>`;
+            <span class="chip-a"></span><span class="big" aria-hidden="true">${String(year()).slice(2)}</span><span class="nm">${p.name}</span></button>`;
         }).join('')}</div>
         <div class="pickers">
           <div class="picker"><span>강조색</span><div class="row"><input type="color" id="pk-a" value="${state.theme.accent}" aria-label="강조색 고르기"><input type="text" id="hx-a" value="${state.theme.accent}" maxlength="7" aria-label="강조색 코드"></div></div>
           <div class="picker"><span>배경색</span><div class="row"><input type="color" id="pk-b" value="${state.theme.bg}" aria-label="배경색 고르기"><input type="text" id="hx-b" value="${state.theme.bg}" maxlength="7" aria-label="배경색 코드"></div></div>
         </div>
-        <div class="preview-strip" aria-hidden="true"><span class="yy">2026</span><span class="tx"><b>( 관람 )</b> 12회</span></div>
+        <div class="preview-strip" aria-hidden="true"><span class="yy">${year()}</span><span class="tx"><b>( 관람 )</b> 12회</span></div>
         <p class="contrast-note" id="cnote"></p>
       </div>
       <footer class="dlg-foot"><button class="btn quiet spacer" type="button" id="reset">처음 색으로</button><button class="btn-line" type="button" id="cancel">바꾸기 전으로</button><button class="btn-solid" type="button" data-close>완료</button></footer>`;
@@ -1175,8 +1187,8 @@
       const b = await DB.getPoster(r.posterId);
       if (b) posters[r.posterId] = await blobToDataURL(b);
     }
-    const data = { app: 'concert-recap-2026', version: 1, exportedAt: new Date().toISOString(), nickname: state.nickname, theme: state.theme, dupIgnore: state.dupIgnore, records: state.records, posters };
-    return new File([JSON.stringify(data)], `concert-recap-2026-backup-${U.todayStr().replace(/-/g, '')}.json`, { type: 'application/json' });
+    const data = { app: 'concert-recap-2026', version: 1, exportedAt: new Date().toISOString(), nickname: state.nickname, year: year(), theme: state.theme, dupIgnore: state.dupIgnore, records: state.records, posters };
+    return new File([JSON.stringify(data)], `concert-recap-backup-${U.todayStr().replace(/-/g, '')}.json`, { type: 'application/json' });
   }
   async function doBackup(share) {
     const file = await makeBackup();
@@ -1199,6 +1211,7 @@
       state.records = [];
       state.dupIgnore = data.dupIgnore || [];
       if (data.nickname) state.nickname = data.nickname;
+      if (Number(data.year) >= 2000 && Number(data.year) <= 2100) state.year = Number(data.year);
       if (data.theme && U.isHex(data.theme.accent) && U.isHex(data.theme.bg)) state.theme = data.theme;
     }
     let added = 0, updated = 0;
@@ -1214,6 +1227,17 @@
     return { added, updated };
   }
 
+  /* 연도 목록: 기록이 있는 해 + 올해·내년, 2015년부터. 해마다 기록 수를 같이 보여 준다 */
+  function yearOptions() {
+    const count = {};
+    for (const r of state.records) if (U.isDate(r.date)) count[r.date.slice(0, 4)] = (count[r.date.slice(0, 4)] || 0) + 1;
+    const ys = Object.keys(count).map(Number).filter((y) => y >= 2000 && y <= 2100);
+    const hi = Math.max(THIS_YEAR + 1, year(), ...ys), lo = Math.min(2015, year(), ...ys);
+    let out = '';
+    for (let y = hi; y >= lo; y--) out += `<option value="${y}"${y === year() ? ' selected' : ''}>${y}${count[y] ? ` (기록 ${count[y]}건)` : ''}</option>`;
+    return out;
+  }
+
   function openData() {
     const n = state.records.length;
     const hasSample = state.records.some((r) => r.source === 'sample');
@@ -1221,6 +1245,9 @@
     const html = `${head('백업·설정')}
       <div class="dlg-body">
         ${previewNote('백업 파일 저장과 CSV 내보내기')}
+        <form id="year-edit" class="field"><span>기록할 연도</span>
+          <div style="display:flex;gap:12px;align-items:end"><select name="year" class="input" style="flex:1" aria-label="기록할 연도">${yearOptions()}</select><button class="btn-line" type="submit">바꾸기</button></div>
+          <small>다른 해 기록은 지우지 않아요. 전체 기록의 ‘${year()}년 외’에서 볼 수 있어요.</small></form>
         <form id="nick-edit" class="field"><span>닉네임</span>
           <div style="display:flex;gap:12px;align-items:end"><input type="text" name="nick" value="${esc(state.nickname)}" maxlength="20" class="input" style="flex:1"><button class="btn-line" type="submit">바꾸기</button></div></form>
         <div class="field"><span>백업 (기록 ${n}건 + 포스터 + 색)</span>
@@ -1241,6 +1268,12 @@
       </div>
       <footer class="dlg-foot"><button class="btn-solid" data-close type="button">닫기</button></footer>`;
     const d = openDialog(html);
+    d.querySelector('#year-edit').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const v = Number(e.target.year.value);
+      if (!(v >= 2000 && v <= 2100) || v === year()) return;
+      state.year = v; save(); d.close(); render(); toast(`${v}년 기록으로 바꿨어요`);
+    });
     d.querySelector('#nick-edit').addEventListener('submit', (e) => {
       e.preventDefault();
       const v = e.target.nick.value.trim();
@@ -1266,7 +1299,7 @@
       const head = ['공연명', '아티스트', '관람일', '공연장', '예매처', '본인 부담 금액', '상태', '메모'];
       const lines = state.records.slice().sort(byDate).map((r) => [r.title, (r.artists || []).join(';'), r.date, r.venue,
         r.vendor === 'other' ? r.vendorOther : (VENDORS[r.vendor] || ''), U.isNum(r.cost) ? r.cost : '', ({ done: '완료', planned: '예정', canceled: '취소' })[r.status] || '', r.memo || ''].map(P.csvCell).join(','));
-      download(new Blob(['﻿' + [head.join(',')].concat(lines).join('\n')], { type: 'text/csv;charset=utf-8' }), `concert-recap-2026-${U.todayStr().replace(/-/g, '')}.csv`);
+      download(new Blob(['﻿' + [head.join(',')].concat(lines).join('\n')], { type: 'text/csv;charset=utf-8' }), `concert-recap-${U.todayStr().replace(/-/g, '')}.csv`);
     });
     const cs = d.querySelector('#clr-sample'); if (cs) cs.addEventListener('click', () => { d.close(); clearSample(); });
     const as = d.querySelector('#add-sample'); if (as) as.addEventListener('click', async () => { d.close(); await loadSample(); render(); });
@@ -1376,11 +1409,11 @@
       state.exportPrefs = { format, layout, scale };
       save();
       try {
-        const pages = await R.renderAll({ format, layout, state, st, tokens, getBlob: DB.getPoster, scale, chartStyle: state.chartStyle === 'bar' ? 'bar' : 'poster' });
+        const pages = await R.renderAll({ format, layout, state, st, tokens, year: year(), getBlob: DB.getPoster, scale, chartStyle: state.chartStyle === 'bar' ? 'bar' : 'poster' });
         if (my !== job) return;
         const blobs = await Promise.all(pages.map((c) => new Promise((res) => c.toBlob(res, 'image/png'))));
         if (my !== job) return;
-        files = blobs.map((b, i) => new File([b], `2026-concert-recap-${format === 'story' ? 'story' : 'square'}-${i + 1}.png`, { type: 'image/png' }));
+        files = blobs.map((b, i) => new File([b], `${year()}-concert-recap-${format === 'story' ? 'story' : 'square'}-${i + 1}.png`, { type: 'image/png' }));
         const [w, h] = R.SIZES[format];
         d.querySelector('#ex-info').textContent = `${files.length}장 · ${w * scale}×${h * scale} · ${(blobs.reduce((s, b) => s + b.size, 0) / 1048576).toFixed(1)}MB`;
         box.innerHTML = files.map((f, i) => `<figure class="ex-page" style="margin:0"><img src="${URL.createObjectURL(f)}" alt="리캡 이미지 ${i + 1}쪽"><div class="row"><span>${i + 1} / ${files.length}</span><button class="btn" type="button" data-dl="${i}">저장</button></div></figure>`).join('');
@@ -1399,6 +1432,7 @@
 
   /* ---------- 라우팅 ---------- */
   function render() {
+    document.title = `${state.nickname ? year() : THIS_YEAR} CONCERT RECAP`;
     if (!state.nickname) { viewOnboard(); return; }
     if (location.hash === '#recap') viewRecap();
     else viewMain();

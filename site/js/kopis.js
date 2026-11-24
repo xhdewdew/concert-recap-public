@@ -138,7 +138,7 @@
   async function searchAll(info) {
     const kws = keywords(info.title, info.date ? 3 : 2);
     if (!kws.length) return { list: [], confident: false };
-    const params = info.date ? { date: info.date } : { year: info.year || 2026 };
+    const params = info.date ? { date: info.date } : { year: info.year || new Date().getFullYear() };
     const errs = [];
     const lists = [];
     for (const q of kws) { // 한 번에 하나씩: KOPIS가 몰린 요청을 거절해서
@@ -174,7 +174,7 @@
   }
   const venueSearch = (q) => json({ venue: q }).then((j) => j.results || []);
   const placeHalls = (id) => json({ place: id }).then((j) => j.halls || []);
-  const artistSearch = (q, date) => json(Object.assign({ artist: q }, date ? { date } : { year: 2026 })).then((j) => j.results || []);
+  const artistSearch = (q, date, year) => json(Object.assign({ artist: q }, date ? { date } : { year: year || new Date().getFullYear() })).then((j) => j.results || []);
 
   return { keywords, score, rank, days, castList, titleArtist, pickArtists, norm, enabled, searchAll, detail, posterBlob, venueSearch, placeHalls, artistSearch, why };
 });

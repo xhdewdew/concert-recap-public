@@ -206,16 +206,17 @@
   function coverStory(ctx, W, H, t, st, nick, pageNo, total, opts) {
     const M = 64;
     label(ctx, t, nick, M, M + 22, 'left', 26);
-    label(ctx, t, '2026 concert recap', W - M, M + 22, 'right', 26);
+    const Y = String(opts.year || 2026);
+    label(ctx, t, Y + ' concert recap', W - M, M + 22, 'right', 26);
 
-    // 굵은 2026: 화면 안에 들어오는 크기
+    // 굵은 연도: 화면 안에 들어오는 크기
     let size = 400;
     const track = (sz) => -sz * 0.075;
     font(ctx, 800, size);
-    while (size > 200 && measureTracked(ctx, '2026', track(size)) > W - M * 2 - 40) { size -= 6; font(ctx, 800, size); }
+    while (size > 200 && measureTracked(ctx, Y, track(size)) > W - M * 2 - 40) { size -= 6; font(ctx, 800, size); }
     ctx.fillStyle = t.accentLarge;
     const base = 150 + size * 0.73;
-    const w26 = tracked(ctx, '2026', M - size * 0.03, base, track(size));
+    const w26 = tracked(ctx, Y, M - size * 0.03, base, track(size));
     square(ctx, t, M - size * 0.03 + w26 + 14, base - size * 0.72, 30);
 
     // 제목 (왼쪽) + 관람 횟수 (오른쪽)
@@ -223,7 +224,7 @@
     const tw = W * 0.5 - M;
     let ts = 54;
     font(ctx, 800, ts);
-    const fixed = ['2026년', '콘서트 기록'];
+    const fixed = [Y + '년', '콘서트 기록'];
     while (ts > 34 && (fixed.some((l) => ctx.measureText(l).width > tw) || ctx.measureText(nick + '의').width > tw * 2)) { ts -= 2; font(ctx, 800, ts); }
     const titleLines = wrap(ctx, nick + '의', tw, 3).concat(fixed);
     ctx.fillStyle = t.ink;
@@ -291,20 +292,21 @@
   function coverSquare(ctx, W, H, t, st, nick, pageNo, total, opts) {
     const M = 56;
     label(ctx, t, nick, M, M + 18, 'left', 22);
-    label(ctx, t, '2026 concert recap', W - M, M + 18, 'right', 22);
-    // 20²⁶
+    const Y = String(opts.year || 2026);
+    label(ctx, t, Y + ' concert recap', W - M, M + 18, 'right', 22);
+    // 20²⁶ (앞 두 자리 + 작게 뒤 두 자리)
     const size = 330;
     font(ctx, 300, size);
     ctx.fillStyle = t.accentLarge;
     const base = M + 40 + size * 0.74;
-    const w20 = tracked(ctx, '20', M - 10, base, -size * 0.06);
+    const w20 = tracked(ctx, Y.slice(0, 2), M - 10, base, -size * 0.06);
     font(ctx, 300, size * 0.5);
-    tracked(ctx, '26', M - 10 + w20 + 6, base - size * 0.36, -size * 0.03);
+    tracked(ctx, Y.slice(2), M - 10 + w20 + 6, base - size * 0.36, -size * 0.03);
     // 제목
     const tx = W * 0.62, tw = W - M - tx;
     let ts = 40; font(ctx, 800, ts);
-    while (ts > 26 && (['2026년', '콘서트 기록'].some((l) => ctx.measureText(l).width > tw) || ctx.measureText(nick + '의').width > tw * 2)) { ts -= 2; font(ctx, 800, ts); }
-    const tl = wrap(ctx, nick + '의', tw, 3).concat(['2026년', '콘서트 기록']);
+    while (ts > 26 && ([Y + '년', '콘서트 기록'].some((l) => ctx.measureText(l).width > tw) || ctx.measureText(nick + '의').width > tw * 2)) { ts -= 2; font(ctx, 800, ts); }
+    const tl = wrap(ctx, nick + '의', tw, 3).concat([Y + '년', '콘서트 기록']);
     ctx.fillStyle = t.ink;
     let ty = base - (tl.length - 1) * ts * 1.14;
     for (const l of tl) { ctx.fillText(fit(ctx, l, tw), tx, ty); ty += ts * 1.14; }
@@ -457,7 +459,8 @@
     const items = st.included.slice();
     const per = PER_PAGE[format][layout];
     const total = 1 + Math.ceil(items.length / per);
-    const texts = [nick, '의 2026년 콘서트 기록 관람 티켓 지출 공연장 아티스트 가장 많이 본 자주 간 월별 관람 완료 기준 공연 포스터 요일 기록 없음 이 바빴어요 회씩 외 공동 올해 번 에 갔어요 에서 을 봤고 썼어요 곳 concert recap',
+    const Y = String(opts.year || 2026);
+    const texts = [nick, Y + ' 0123456789', '의 년 콘서트 기록 관람 티켓 지출 공연장 아티스트 가장 많이 본 자주 간 월별 관람 완료 기준 공연 포스터 요일 기록 없음 이 바빴어요 회씩 외 공동 올해 번 에 갔어요 에서 을 봤고 썼어요 곳 concert recap',
       ...items.map((r) => r.title + r.venue + (r.artists || []).join(''))];
     await ensureFonts(texts);
 
@@ -474,7 +477,7 @@
     };
     {
       const [c, ctx] = mk();
-      const co = { chartStyle: opts.chartStyle || 'poster', items, imgs };
+      const co = { chartStyle: opts.chartStyle || 'poster', items, imgs, year: Y };
       if (format === 'story') coverStory(ctx, W, H, tokens, st, nick, 1, total, co);
       else coverSquare(ctx, W, H, tokens, st, nick, 1, total, co);
       pages.push(c);
