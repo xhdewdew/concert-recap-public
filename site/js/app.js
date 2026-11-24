@@ -790,15 +790,23 @@
     let pending = null; // { v: 이번에 넣은 날짜, isNew: 원래는 없던 날짜인지 }
     // 새로 시작: 칸을 다시 누를 때(안드로이드는 고른 뒤에도 칸에 포커스가 남음), 칸에서 나갈 때.
     // focusin은 쓰지 않는다 — 브라우저에 따라 값이 바뀔 때도 다시 오기 때문.
+    // 달력이 열려 있는 동안에는 날짜 칸 주변을 다시 그리지 않는다.
+    // 칸 위에 날짜 칩이 생기거나 옆 글자가 바뀌어 칸이 움직이면, 아이폰 달력이 닫혀 버릴 수 있다.
+    // 고른 날짜는 바로 기억해 두고, 칸에서 나갈 때(달력을 닫을 때) 한 번에 그린다.
+    let needDraw = false;
     datesBox.addEventListener('pointerdown', (e) => { if (e.target.id === 'add-day') pending = null; });
-    datesBox.addEventListener('focusout', (e) => { if (e.target.id === 'add-day') { pending = null; e.target.value = ''; } });
+    datesBox.addEventListener('focusout', (e) => {
+      if (e.target.id !== 'add-day') return;
+      pending = null; e.target.value = '';
+      if (needDraw) { needDraw = false; drawDates(); autoStatus(); }
+    });
     datesBox.addEventListener('change', (e) => {
       const t = e.target;
       if (t.id === 'add-day') {
         if (pending && pending.isNew && pending.v !== t.value) selected.delete(pending.v);
         pending = null;
         if (U.isDate(t.value)) { pending = { v: t.value, isNew: !selected.has(t.value) }; selected.add(t.value); }
-        drawDates();
+        if (document.activeElement === t) needDraw = true; else drawDates();
       }
       else if (t.type === 'checkbox') { t.checked ? selected.add(t.value) : selected.delete(t.value); drawDates(); }
       else if (t.name === 'date') { pre.date = t.value; }
