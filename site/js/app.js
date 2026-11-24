@@ -93,6 +93,45 @@
   }
   const head = (title) => `<header class="dlg-head"><h2>${title}</h2><button class="x" data-close aria-label="닫기">×</button></header>`;
   const IN_FRAME = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
+
+  /* X·카톡·인스타 같은 앱 안 브라우저: 이미지·백업 저장이 막히고 기록도 그 앱 안에만 남는다.
+     그래서 화면마다 '브라우저에서 열기' 안내를 띄운다. (주소 뒤 ?inapp=X 로 미리 볼 수 있음) */
+  const UA = navigator.userAgent || '';
+  const IS_ANDROID = /Android/i.test(UA);
+  const IS_IOS = /iPhone|iPad|iPod/i.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1);
+  const INAPP = (() => {
+    const force = /[?&]inapp=([^&#]+)/.exec(location.search);
+    if (force) return decodeURIComponent(force[1]);
+    const apps = [[/KAKAOTALK/i, '카카오톡'], [/Twitter/i, 'X'], [/Instagram/i, '인스타그램'], [/Barcelona/i, '스레드'],
+      [/FBAN|FBAV|FB_IAB|FBIOS/, '페이스북'], [/\bLine\//i, '라인'], [/NAVER\(inapp|NAVER\//, '네이버'], [/DaumApps/i, '다음'],
+      [/BAND\//, '밴드'], [/everytime/i, '에브리타임'], [/musical_ly|BytedanceWebview|TikTok/i, '틱톡']];
+    for (const [re, name] of apps) if (re.test(UA)) return name;
+    if (IS_ANDROID && /; wv\)/.test(UA)) return '앱';
+    return '';
+  })();
+  const SITE = location.origin + location.pathname;
+  function inAppBox(compact) {
+    if (!INAPP) return '';
+    const who = INAPP === '앱' ? '다른 앱' : `${esc(INAPP)} 앱`;
+    let open = '';
+    if (INAPP === '카카오톡') open = `<a class="btn-solid" href="kakaotalk://web/openExternal?url=${encodeURIComponent(SITE)}">다른 브라우저로 열기</a>`;
+    else if (IS_ANDROID) open = `<a class="btn-solid" href="intent://${location.host}${location.pathname}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(SITE)};end">크롬으로 열기</a>`;
+    else if (IS_IOS) open = `<a class="btn-solid" href="x-safari-${SITE}">사파리로 열기</a>`;
+    return `<div class="inapp${compact ? ' compact' : ''}" role="note">
+      <p><b>지금 ${who} 안에서 열었어요.</b> 여기서는 이미지 저장·백업이 안 되고, 기록도 이 앱 안에만 남아요.</p>
+      <p>${open ? '아래 버튼을 누르거나, ' : ''}화면의 ⋮ 또는 ··· 메뉴에서 <b>‘브라우저에서 열기’</b>를 눌러 주세요.${compact ? '' : ' 이미 입력한 기록은 브라우저로 옮겨지지 않아요.'}</p>
+      <div class="row">${open}<button class="btn-line" type="button" data-copy-url>주소 복사</button></div>
+    </div>`;
+  }
+  async function copySite() {
+    let ok = false;
+    try { await navigator.clipboard.writeText(SITE); ok = true; } catch (e) {
+      const t = document.createElement('textarea'); t.value = SITE; t.setAttribute('readonly', ''); t.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(t); t.select(); try { ok = document.execCommand('copy'); } catch (x) { ok = false; } t.remove();
+    }
+    toast(ok ? '주소를 복사했어요. 사파리·크롬 주소창에 붙여 넣어 주세요.' : SITE);
+  }
+  document.addEventListener('click', (e) => { if (e.target.closest('[data-copy-url]')) copySite(); });
   const previewNote = (what) => (IN_FRAME ? `<div class="notice">미리보기에서는 ${what}이 안 돼요. 배포한 주소에서는 돼요.</div>` : '');
 
   /* 브라우저 기본 확인 창 대신 쓰는 확인 창 (앱 안 미리보기에서도 동작) */
@@ -157,27 +196,31 @@
 
   /* ---------- 첫 방문 ---------- */
   function viewOnboard() {
-    document.body.classList.remove('recap-page');
+    document.body.classList.remove('recap-page', 'has-dock');
+    const back = !!state.nickname; // 메인에서 '처음으로'를 눌러 온 경우: 지금 값을 채워 둔다
+    const startYear = back ? year() : THIS_YEAR;
+    const years = [...new Set([THIS_YEAR - 1, THIS_YEAR, THIS_YEAR + 1, startYear])].sort();
     app.innerHTML = `
       <main class="onboard">
-        <div class="onboard-mast" aria-hidden="true" id="ob-mast">${THIS_YEAR}</div>
+        <div class="onboard-mast" aria-hidden="true" id="ob-mast">${startYear}</div>
         <div class="onboard-body">
-          <h1 id="ob-title">${THIS_YEAR}년 공연 기록</h1>
+          ${inAppBox()}
+          <h1 id="ob-title">${startYear}년 공연 기록</h1>
           <form id="nick-form" novalidate>
             <fieldset class="field" style="border:0;margin:0;padding:0"><legend>몇 년도 공연을 기록할까요?</legend>
-              <div class="seg">${[THIS_YEAR - 1, THIS_YEAR, THIS_YEAR + 1].map((v) => `<label><input type="radio" name="year" value="${v}"${v === THIS_YEAR ? ' checked' : ''}>${v}</label>`).join('')}</div>
+              <div class="seg" style="grid-template-columns:repeat(${years.length},1fr)">${years.map((v) => `<label><input type="radio" name="year" value="${v}"${v === startYear ? ' checked' : ''}>${v}</label>`).join('')}</div>
             </fieldset>
             <label class="field"><span>닉네임</span>
-              <input type="text" name="nick" maxlength="20" autocomplete="nickname" placeholder="리캡에 들어갈 이름" required>
+              <input type="text" name="nick" maxlength="20" autocomplete="nickname" placeholder="리캡에 들어갈 이름" value="${back ? esc(state.nickname) : ''}" required>
             </label>
             <p class="err" id="nick-err" hidden>닉네임을 적어 주세요.</p>
             <div class="row">
               <button class="btn-solid" type="submit">시작하기</button>
-              <button class="btn" type="button" id="try-sample">예시 기록으로 둘러보기</button>
+              ${back ? '<a class="btn" href="#">메인으로</a>' : ''}
             </div>
           </form>
         </div>
-        <p class="onboard-foot">기록은 이 기기에만 저장돼요.</p>
+        <p class="onboard-foot">${back && state.records.length ? `지금까지 쓴 기록 ${state.records.length}건은 그대로 있어요. ` : ''}기록은 이 기기에만 저장돼요.</p>
       </main>`;
     const form = document.getElementById('nick-form');
     const pickedYear = () => Number((form.querySelector('input[name=year]:checked') || {}).value) || THIS_YEAR;
@@ -196,7 +239,6 @@
       render();
     };
     form.addEventListener('submit', (e) => { e.preventDefault(); go(false); });
-    document.getElementById('try-sample').addEventListener('click', () => go(true));
   }
 
   async function loadSample() {
@@ -224,6 +266,7 @@
   /* ---------- 메인 ---------- */
   function alertsHTML(st) {
     const out = [];
+    if (INAPP) out.push(inAppBox());
     if (state.sample) out.push(`<div class="alert"><span>예시 기록이에요.</span><span class="acts"><button class="btn" data-act="clear-sample">예시 지우기</button></span></div>`);
     if (st.overdue.length) out.push(`<div class="alert"><span>날짜가 지난 관람 예정 <strong>${st.overdue.length}건</strong></span><span class="acts"><button class="btn" data-act="overdue-done">완료로 바꾸기</button><button class="btn quiet" data-act="filter" data-f="planned">목록 보기</button></span></div>`);
     if (st.duplicates.length) out.push(`<div class="alert"><span>중복 의심 <strong>${st.duplicates.length}묶음</strong></span><span class="acts"><button class="btn" data-act="dups">확인하기</button></span></div>`);
@@ -249,7 +292,7 @@
     if (!list.length) {
       return `<div class="empty">
         <h2>첫 공연을 기록하세요</h2>
-        <div class="row"><button class="btn-solid" data-act="import">캡처로 추가</button><button class="btn-line" data-act="add">직접 추가</button>${state.records.length ? '' : '<button class="btn" data-act="sample">예시 보기</button>'}</div>
+        <div class="row"><button class="btn-solid" data-act="add">직접 추가</button><button class="btn-line" data-act="import">캡처로 추가</button></div>
       </div>`;
     }
     const cards = statCards(st);
@@ -320,12 +363,10 @@
     app.innerHTML = `
     <div class="page">
       <header class="bar">
-        <span class="who">${n}</span>
-        <nav aria-label="기록 관리">
-          <button class="btn" data-act="import">캡처로 추가</button>
-          <button class="btn" data-act="add">직접 추가</button>
-          <button class="btn" data-act="theme">색 바꾸기</button>
-          <button class="btn" data-act="data">백업·설정</button>
+        <a class="btn" href="#start">처음으로</a>
+        <nav aria-label="메뉴">
+          <button class="btn" data-act="backup-open">백업</button>
+          <button class="btn" data-act="settings">설정</button>
         </nav>
       </header>
       <section class="hero" aria-labelledby="hero-title">
@@ -340,7 +381,7 @@
           <div class="stat"><dt>아티스트</dt><dd>${st.artistCount}<small>팀</small></dd></div>
         </dl>
         <div class="hero-cta">
-          ${st.count ? `<a class="btn-solid" href="#recap">${year()} CONCERT RECAP</a>` : '<button class="btn-solid" data-act="import">캡처로 추가</button>'}
+          ${st.count ? `<a class="btn-solid" href="#recap">${year()} CONCERT RECAP</a>` : ''}
         </div>
       </section>
       ${alertsHTML(st)}
@@ -352,9 +393,11 @@
       <footer class="foot">
         <span>공연 정보 출처: KOPIS 공연예술통합전산망</span>
       </footer>
+      ${galleryRecords().length ? `<div class="recap-dock add-dock"><button class="btn-solid" data-act="add">직접 추가</button><button class="btn-line" data-act="import">캡처로 추가</button></div>` : ''}
     </div>`;
     hydrate(app);
     layoutGallery();
+    document.body.classList.toggle('has-dock', !!galleryRecords().length);
   }
 
   function layoutGallery() {
@@ -490,6 +533,7 @@
   function viewRecap() {
     const st = stats();
     document.body.classList.add('recap-page');
+    document.body.classList.remove('has-dock');
     const n = esc(nick());
     const empty = !st.count;
     app.innerHTML = `
@@ -504,7 +548,7 @@
         </div>
         <div class="year-mark" aria-hidden="true">${yy(year())}</div>
       </section>
-      ${empty ? `<div class="empty"><h2>관람 완료한 공연이 없어요</h2><div class="row"><button class="btn-solid" data-act="import">캡처로 추가</button></div></div>` : `
+      ${empty ? `<div class="empty"><h2>관람 완료한 공연이 없어요</h2><div class="row"><button class="btn-solid" data-act="add">직접 추가</button></div></div>` : `
       <section class="recap-stats" aria-label="올해의 숫자">
         <div class="rstat"><span class="lbl">관람</span><span class="val">${st.count}<small>회</small></span><span class="sub">공연 ${st.showCount}개</span><button class="btn quiet why" data-act="basis" data-k="count">근거</button></div>
         <div class="rstat"><span class="lbl">공연장</span><span class="val">${st.venueCount}<small>곳</small></span><button class="btn quiet why" data-act="basis" data-k="venue">근거</button></div>
@@ -594,7 +638,7 @@
   function openForm(opts) {
     opts = opts || {};
     const rec = opts.record || null;
-    const pre = Object.assign({ title: '', artists: [], date: '', venue: '', vendor: '', vendorOther: '', cost: null, status: '', memo: '', kopisId: '', period: null }, rec || {}, opts.prefill || {});
+    const pre = Object.assign({ title: '', artists: [], date: '', venue: '', vendor: '', vendorOther: '', cost: null, seat: '', status: '', memo: '', kopisId: '', period: null }, rec || {}, opts.prefill || {});
     const auto = new Set(opts.auto || []);
     let artists = (pre.artists || []).slice();
     let newPoster = null; // {blob, ratio}
@@ -638,6 +682,8 @@
           <label class="field${a('cost')}"><span>내가 낸 금액 (원)</span><input type="text" name="cost" inputmode="numeric" value="${U.isNum(pre.cost) ? U.comma(pre.cost) : ''}" placeholder="0">
             ${opts.tickets > 1 && U.isNum(pre.cost) ? `<button class="btn" type="button" id="split">${opts.tickets}매로 나누기 (${U.won(Math.round(pre.cost / opts.tickets))})</button>` : ''}</label>
         </div>
+        <label class="field"><span>좌석 (선택)</span><input type="text" name="seat" value="${esc(pre.seat || '')}" maxlength="60" placeholder="예: 플로어 A구역 12열 5번" autocomplete="off">
+          <small>나만 보는 정보예요. 이미지 저장에는 들어가지 않아요.</small></label>
         <fieldset class="field${a('status')}" style="border:0;margin:0;padding:0"><legend>상태</legend>
           <div class="seg">${Object.entries(STATUS).map(([k, v]) => `<label><input type="radio" name="status" value="${k}"${pre.status === k ? ' checked' : ''}>${v}</label>`).join('')}</div>
         </fieldset>
@@ -951,6 +997,7 @@
         vendor: f.vendor.value,
         vendorOther: f.vendor.value === 'other' ? f.vendorOther.value.trim() : '',
         cost: costDigits === '' ? null : Number(costDigits),
+        seat: f.seat.value.trim(),
         memo: f.memo.value.trim(),
         kopisId: kopisId || '',
         period: period || null,
@@ -1005,6 +1052,7 @@
             <dl>
               <dt>아티스트</dt><dd>${esc((r.artists || []).join(', ')) || '미입력'}</dd>
               <dt>공연장</dt><dd>${esc(r.venue) || '미입력'}</dd>
+              ${r.seat ? `<dt>좌석</dt><dd>${esc(r.seat)}</dd>` : ''}
               <dt>예매처</dt><dd>${r.vendor === 'other' ? esc(r.vendorOther || '기타') : VENDORS[r.vendor] || '미입력'}</dd>
               <dt>본인 부담</dt><dd>${U.won(r.cost)}</dd>
               <dt>상태</dt><dd>${STATUS[r.status] || ''}${other ? ' · 통계 제외' : r.status !== 'done' ? ' · 통계 제외' : ''}</dd>
@@ -1126,23 +1174,27 @@
     const before = Object.assign({}, state.theme);
     const html = `${head('리캡 색 바꾸기')}
       <div class="dlg-body">
-        <div class="swatches" role="group" aria-label="색 조합">${T.PRESETS.map((p) => {
+        <div class="pickers" style="margin-top:0">
+          ${[['a', '강조색', state.theme.accent], ['b', '배경색', state.theme.bg]].map(([k, lb, v]) => `<div class="picker"><span>${lb}</span>
+            <label class="pick-tap"><input type="color" id="pk-${k}" value="${v}" aria-label="${lb} 팔레트에서 고르기"><i class="sw" id="sw-${k}" style="background:${v}"></i><b id="cd-${k}">${v.toUpperCase()}</b><em>눌러서 고르기</em></label>
+            <div class="row hx-row"><small>코드로 입력</small><input type="text" id="hx-${k}" value="${v.toUpperCase()}" maxlength="7" aria-label="${lb} 코드" autocomplete="off" spellcheck="false"></div></div>`).join('')}
+        </div>
+        <div class="preview-strip" aria-hidden="true"><span class="yy">${year()}</span><span class="tx"><b>( 관람 )</b> 12회</span></div>
+        <p class="contrast-note" id="cnote"></p>
+        <p class="help" style="margin:18px 0 0;font-weight:600;color:var(--ink)">추천 색 조합</p>
+        <div class="swatches" role="group" aria-label="추천 색 조합" style="margin-top:8px">${T.PRESETS.map((p) => {
           const tk = T.tokens(p.accent, p.bg);
           return `<button class="swatch" type="button" data-preset="${p.id}" aria-pressed="${state.theme.preset === p.id}" style="--sw-bg:${p.bg};--sw-a:${tk.accentLarge};--sw-ink:${tk.ink}">
             <span class="chip-a"></span><span class="big" aria-hidden="true">${String(year()).slice(2)}</span><span class="nm">${p.name}</span></button>`;
         }).join('')}</div>
-        <div class="pickers">
-          <div class="picker"><span>강조색</span><div class="row"><input type="color" id="pk-a" value="${state.theme.accent}" aria-label="강조색 고르기"><input type="text" id="hx-a" value="${state.theme.accent}" maxlength="7" aria-label="강조색 코드"></div></div>
-          <div class="picker"><span>배경색</span><div class="row"><input type="color" id="pk-b" value="${state.theme.bg}" aria-label="배경색 고르기"><input type="text" id="hx-b" value="${state.theme.bg}" maxlength="7" aria-label="배경색 코드"></div></div>
-        </div>
-        <div class="preview-strip" aria-hidden="true"><span class="yy">${year()}</span><span class="tx"><b>( 관람 )</b> 12회</span></div>
-        <p class="contrast-note" id="cnote"></p>
       </div>
       <footer class="dlg-foot"><button class="btn quiet spacer" type="button" id="reset">처음 색으로</button><button class="btn-line" type="button" id="cancel">바꾸기 전으로</button><button class="btn-solid" type="button" data-close>완료</button></footer>`;
     const d = openDialog(html);
     const sync = () => {
-      d.querySelector('#pk-a').value = state.theme.accent; d.querySelector('#hx-a').value = state.theme.accent.toUpperCase();
-      d.querySelector('#pk-b').value = state.theme.bg; d.querySelector('#hx-b').value = state.theme.bg.toUpperCase();
+      for (const [k, v] of [['a', state.theme.accent], ['b', state.theme.bg]]) {
+        d.querySelector('#pk-' + k).value = v; d.querySelector('#hx-' + k).value = v.toUpperCase();
+        d.querySelector('#cd-' + k).textContent = v.toUpperCase(); d.querySelector('#sw-' + k).style.background = v;
+      }
       d.querySelectorAll('.swatch').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.preset === state.theme.preset)));
       d.querySelector('#cnote').textContent = tokens.adjusted ? '배경과 비슷한 색이라 글자는 조금 진하게 보여요.' : '';
     };
@@ -1205,8 +1257,9 @@
   }
   async function restore(file, mode) {
     let data;
-    try { data = JSON.parse(await file.text()); } catch (e) { throw new Error('백업 파일을 읽지 못했어요.'); }
-    if (!data || data.app !== 'concert-recap-2026' || !Array.isArray(data.records)) throw new Error('이 사이트의 백업 파일이 아니에요.');
+    const notOurs = '이 파일은 백업 파일이 아니에요. 이름이 concert-recap-backup-날짜.json 인 파일을 골라 주세요.';
+    try { data = JSON.parse(await file.text()); } catch (e) { throw new Error(notOurs); }
+    if (!data || data.app !== 'concert-recap-2026' || !Array.isArray(data.records)) throw new Error(notOurs);
     const posters = data.posters || {};
     const valid = data.records.filter((r) => r && r.id && typeof r.title === 'string');
     if (mode === 'replace') {
@@ -1242,33 +1295,23 @@
     return out;
   }
 
-  function openData() {
-    const n = state.records.length;
+  /* ---------- 설정 ---------- */
+  function openSettings() {
     const hasSample = state.records.some((r) => r.source === 'sample');
-    const canShare = !!(navigator.canShare && window.File && navigator.canShare({ files: [new File(['x'], 'x.json', { type: 'application/json' })] }));
-    const html = `${head('백업·설정')}
+    const html = `${head('설정')}
       <div class="dlg-body">
-        ${previewNote('백업 파일 저장과 CSV 내보내기')}
+        <form id="nick-edit" class="field"><span>닉네임</span>
+          <div style="display:flex;gap:12px;align-items:end"><input type="text" name="nick" value="${esc(state.nickname)}" maxlength="20" class="input" style="flex:1"><button class="btn-line" type="submit">바꾸기</button></div></form>
         <form id="year-edit" class="field"><span>기록할 연도</span>
           <div style="display:flex;gap:12px;align-items:end"><select name="year" class="input" style="flex:1" aria-label="기록할 연도">${yearOptions()}</select><button class="btn-line" type="submit">바꾸기</button></div>
           <small>다른 해 기록은 지우지 않아요. 전체 기록의 ‘${year()}년 외’에서 볼 수 있어요.</small></form>
-        <form id="nick-edit" class="field"><span>닉네임</span>
-          <div style="display:flex;gap:12px;align-items:end"><input type="text" name="nick" value="${esc(state.nickname)}" maxlength="20" class="input" style="flex:1"><button class="btn-line" type="submit">바꾸기</button></div></form>
-        <div class="field"><span>백업 (기록 ${n}건 + 포스터 + 색)</span>
-          <div style="display:flex;gap:12px;flex-wrap:wrap"><button class="btn-solid" type="button" id="bk">백업 파일 저장</button>${canShare ? '<button class="btn-line" type="button" id="bk-share">파일 앱·에어드롭으로 보내기</button>' : ''}</div>
-          <small>${state.lastBackup ? `마지막 백업 ${new Date(state.lastBackup).toLocaleDateString('ko-KR')}` : '백업 기록 없음'}</small>
-        </div>
-        <div class="field"><span>백업에서 복원</span>
-          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center"><span class="btn-line file-btn">백업 파일 고르기<input type="file" accept=".json,application/json" id="rs-file"></span></div>
-          <div id="rs-choose" hidden class="notice">
-            <div style="display:flex;gap:12px;flex-wrap:wrap"><button class="btn-line" type="button" id="rs-merge">합치기</button><button class="btn-line btn-danger" type="button" id="rs-replace">지우고 바꾸기</button></div></div>
-          <p class="err" id="rs-err" hidden></p>
-        </div>
-        <div class="field"><span>표로 내보내기</span>
-          <div style="display:flex;gap:12px;flex-wrap:wrap"><button class="btn" type="button" id="csv-out">CSV로 내보내기</button></div></div>
-        <p class="help" style="margin:0">기록은 이 기기에만 저장돼요. 아이폰은 ‘홈 화면에 추가’해서 쓰고 가끔 백업하세요.</p>
+        <div class="field"><span>리캡 색</span>
+          <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+            <span class="color-now" aria-hidden="true"><i style="background:${state.theme.accent}"></i><i style="background:${state.theme.bg}"></i></span>
+            <button class="btn-line" type="button" id="go-theme">색 바꾸기</button></div></div>
         <div class="field"><span>지우기</span>
-          <div style="display:flex;gap:12px;flex-wrap:wrap">${hasSample ? '<button class="btn-line" type="button" id="clr-sample">예시 기록 지우기</button>' : '<button class="btn" type="button" id="add-sample">예시 기록 넣기</button>'}<button class="btn-line btn-danger" type="button" id="clr-all">모든 기록 지우기</button></div></div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">${hasSample ? '<button class="btn-line" type="button" id="clr-sample">예시 기록 지우기</button>' : ''}<button class="btn-line btn-danger" type="button" id="clr-all">모든 기록 지우기</button></div>
+          <small>지우기 전에 ‘백업’에서 백업 파일을 만들어 두세요.</small></div>
       </div>
       <footer class="dlg-foot"><button class="btn-solid" data-close type="button">닫기</button></footer>`;
     const d = openDialog(html);
@@ -1284,35 +1327,82 @@
       if (!v) { toast('닉네임을 적어 주세요'); return; }
       state.nickname = v; save(); render(); toast('닉네임을 바꿨어요');
     });
-    d.querySelector('#bk').addEventListener('click', () => doBackup(false));
-    const bs = d.querySelector('#bk-share'); if (bs) bs.addEventListener('click', () => doBackup(true));
-    let picked = null;
-    d.querySelector('#rs-file').addEventListener('change', (e) => { picked = e.target.files[0]; d.querySelector('#rs-choose').hidden = !picked; });
-    const run = async (mode) => {
-      const er = d.querySelector('#rs-err');
-      if (mode === 'replace' && !(await ask('지금 기기에 있는 기록과 포스터를 모두 지우고 백업 내용으로 바꿀까요?', { title: '백업으로 바꾸기', ok: '바꾸기', danger: true }))) return;
-      try {
-        const res = await restore(picked, mode);
-        d.close(); render();
-        toast(`복원했어요. 새 기록 ${res.added}건${res.updated ? `, 바뀐 기록 ${res.updated}건` : ''}`);
-      } catch (err) { er.textContent = err.message; er.hidden = false; }
-    };
-    d.querySelector('#rs-merge').addEventListener('click', () => run('merge'));
-    d.querySelector('#rs-replace').addEventListener('click', () => run('replace'));
-    d.querySelector('#csv-out').addEventListener('click', () => {
-      const head = ['공연명', '아티스트', '관람일', '공연장', '예매처', '본인 부담 금액', '상태', '메모'];
-      const lines = state.records.slice().sort(byDate).map((r) => [r.title, (r.artists || []).join(';'), r.date, r.venue,
-        r.vendor === 'other' ? r.vendorOther : (VENDORS[r.vendor] || ''), U.isNum(r.cost) ? r.cost : '', ({ done: '완료', planned: '예정', canceled: '취소' })[r.status] || '', r.memo || ''].map(P.csvCell).join(','));
-      download(new Blob(['﻿' + [head.join(',')].concat(lines).join('\n')], { type: 'text/csv;charset=utf-8' }), `concert-recap-${U.todayStr().replace(/-/g, '')}.csv`);
-    });
+    d.querySelector('#go-theme').addEventListener('click', () => { d.close(); openTheme(); });
     const cs = d.querySelector('#clr-sample'); if (cs) cs.addEventListener('click', () => { d.close(); clearSample(); });
-    const as = d.querySelector('#add-sample'); if (as) as.addEventListener('click', async () => { d.close(); await loadSample(); render(); });
     d.querySelector('#clr-all').addEventListener('click', async () => {
       if (!(await ask('모든 기록과 포스터를 지워요. 되돌릴 수 없어요. 먼저 백업해 두는 걸 권해요.', { title: '모든 기록 지우기', ok: '모두 지우기', danger: true, typeWord: '삭제' }))) return;
       for (const r of state.records) if (r.posterId) forgetPoster(r.posterId);
       await DB.clearPosters();
       state.records = []; state.sample = false; state.dupIgnore = [];
       save(); d.close(); render(); toast('모든 기록을 지웠어요');
+    });
+  }
+
+  /* ---------- 백업 (처음 쓰는 사람도 따라 할 수 있게 단계별로) ---------- */
+  function openBackup() {
+    const n = state.records.length;
+    const canShare = !!(navigator.canShare && window.File && navigator.canShare({ files: [new File(['x'], 'x.json', { type: 'application/json' })] }));
+    const where = IS_IOS ? '<b>파일</b> 앱 → <b>다운로드</b> 폴더' : IS_ANDROID ? '<b>내 파일</b>(또는 파일) 앱 → <b>다운로드</b> 폴더' : '<b>다운로드</b> 폴더';
+    const saveSteps = IS_IOS
+      ? ['아래 <b>백업 파일 저장</b>을 눌러요.', '‘다운로드할까요?’ 창이 뜨면 <b>다운로드</b>를 눌러요.', `파일은 ${where}에 들어가요. 이름은 <b>concert-recap-backup-날짜.json</b>이에요.`]
+      : ['아래 <b>백업 파일 저장</b>을 눌러요.', `파일은 ${where}에 들어가요. 이름은 <b>concert-recap-backup-날짜.json</b>이에요.`];
+    const openSteps = IS_IOS
+      ? ['<b>백업 파일 고르기</b>를 눌러요.', '파일 창이 열리면 <b>둘러보기</b> → <b>다운로드</b>로 가서 백업 파일을 눌러요.', '카톡으로 받은 파일이면, 먼저 카톡에서 파일을 열고 <b>공유(↑) → 파일에 저장</b>을 해 두세요.']
+      : IS_ANDROID
+        ? ['<b>백업 파일 고르기</b>를 눌러요.', '‘최근’ 목록이 나오면 왼쪽 위 <b>≡</b> → <b>다운로드</b>로 가서 백업 파일을 눌러요.', '카톡으로 받은 파일이면, 먼저 카톡에서 파일을 눌러 <b>저장</b>해 두세요.']
+        : ['<b>백업 파일 고르기</b>를 눌러 백업 파일을 골라요.'];
+    const ol = (list) => `<ol class="steps">${list.map((x) => `<li>${x}</li>`).join('')}</ol>`;
+    const html = `${head('백업')}
+      <div class="dlg-body">
+        ${previewNote('백업 파일 저장과 CSV 내보내기')}${inAppBox(true)}
+        <div class="notice">기록은 서버가 아니라 <b>이 폰의 브라우저에만</b> 저장돼요. 브라우저 기록·캐시를 지우거나 폰을 바꾸면 사라질 수 있어요. <b>백업 파일</b>을 만들어 두면 언제든, 다른 폰에서도 그대로 되살릴 수 있어요.</div>
+        <section class="field"><span>1. 백업 파일 만들기 · 기록 ${n}건 + 포스터 + 색</span>
+          ${ol(saveSteps)}
+          <div style="display:flex;gap:12px;flex-wrap:wrap"><button class="btn-solid" type="button" id="bk">백업 파일 저장</button>${canShare ? '<button class="btn-line" type="button" id="bk-share">카톡·드라이브로 보내기</button>' : ''}</div>
+          <small>${canShare ? '‘카톡·드라이브로 보내기’로 카톡 나와의 채팅이나 구글 드라이브에 보내 두면 폰을 바꿔도 안전해요. ' : ''}${state.lastBackup ? `마지막 백업: ${new Date(state.lastBackup).toLocaleDateString('ko-KR')}` : '아직 백업한 적이 없어요.'}</small>
+        </section>
+        <section class="field"><span>2. 백업 파일로 되살리기</span>
+          ${ol(openSteps)}
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center"><span class="btn-line file-btn">백업 파일 고르기<input type="file" accept=".json,application/json,text/plain,application/octet-stream" id="rs-file"></span></div>
+          <div id="rs-choose" hidden class="notice">
+            <p style="margin:0 0 8px"><b id="rs-name"></b> 을(를) 골랐어요. 어떻게 할까요?</p>
+            <ul style="margin:0 0 10px;padding-left:18px"><li><b>합치기</b>: 지금 기록은 두고, 백업에만 있는 기록을 더해요. (보통은 이걸 고르세요)</li><li><b>바꾸기</b>: 지금 기록을 지우고 백업 내용으로 바꿔요.</li></ul>
+            <div style="display:flex;gap:12px;flex-wrap:wrap"><button class="btn-solid" type="button" id="rs-merge">합치기</button><button class="btn-line btn-danger" type="button" id="rs-replace">바꾸기</button></div></div>
+          <p class="err" id="rs-err" hidden></p>
+          <small>파일이 흐리게 보여서 안 눌리면, 파일 이름 끝이 <b>.json</b>인지 확인해 주세요.</small>
+        </section>
+        <section class="field"><span>표로 내보내기 (엑셀·구글 시트)</span>
+          <div style="display:flex;gap:12px;flex-wrap:wrap"><button class="btn" type="button" id="csv-out">CSV로 내보내기</button></div>
+          <small>보기용 표예요. 되살리기에는 위의 백업 파일을 쓰세요.</small></section>
+        ${IS_IOS ? '<p class="help" style="margin:0">아이폰은 사파리 아래 <b>공유(↑) → 홈 화면에 추가</b>로 앱처럼 쓰면 기록이 더 오래 안전하게 남아요.</p>' : ''}
+      </div>
+      <footer class="dlg-foot"><button class="btn-solid" data-close type="button">닫기</button></footer>`;
+    const d = openDialog(html);
+    d.querySelector('#bk').addEventListener('click', () => doBackup(false));
+    const bs = d.querySelector('#bk-share'); if (bs) bs.addEventListener('click', () => doBackup(true));
+    let picked = null;
+    d.querySelector('#rs-file').addEventListener('change', (e) => {
+      picked = e.target.files[0];
+      d.querySelector('#rs-choose').hidden = !picked;
+      d.querySelector('#rs-err').hidden = true;
+      if (picked) d.querySelector('#rs-name').textContent = picked.name;
+    });
+    const run = async (mode) => {
+      const er = d.querySelector('#rs-err');
+      if (mode === 'replace' && !(await ask('지금 기기에 있는 기록과 포스터를 모두 지우고 백업 내용으로 바꿀까요?', { title: '백업으로 바꾸기', ok: '바꾸기', danger: true }))) return;
+      try {
+        const res = await restore(picked, mode);
+        d.close(); render();
+        toast(`되살렸어요. 새 기록 ${res.added}건${res.updated ? `, 바뀐 기록 ${res.updated}건` : ''}`);
+      } catch (err) { er.textContent = err.message; er.hidden = false; }
+    };
+    d.querySelector('#rs-merge').addEventListener('click', () => run('merge'));
+    d.querySelector('#rs-replace').addEventListener('click', () => run('replace'));
+    d.querySelector('#csv-out').addEventListener('click', () => {
+      const head = ['공연명', '아티스트', '관람일', '공연장', '좌석', '예매처', '본인 부담 금액', '상태', '메모'];
+      const lines = state.records.slice().sort(byDate).map((r) => [r.title, (r.artists || []).join(';'), r.date, r.venue, r.seat || '',
+        r.vendor === 'other' ? r.vendorOther : (VENDORS[r.vendor] || ''), U.isNum(r.cost) ? r.cost : '', ({ done: '완료', planned: '예정', canceled: '취소' })[r.status] || '', r.memo || ''].map(P.csvCell).join(','));
+      download(new Blob(['﻿' + [head.join(',')].concat(lines).join('\n')], { type: 'text/csv;charset=utf-8' }), `concert-recap-${U.todayStr().replace(/-/g, '')}.csv`);
     });
   }
 
@@ -1380,22 +1470,26 @@
     const st = stats();
     if (!st.count) { toast('관람 완료한 공연이 있어야 이미지를 만들 수 있어요'); return; }
     const prefs = Object.assign({ format: 'story', layout: 'checker', scale: 1 }, state.exportPrefs || {});
+    const SHOW = [['spend', '티켓 지출'], ['counts', '공연장·아티스트 수'], ['bests', '가장 많이 본 아티스트·자주 간 공연장'], ['chart', '월별 관람 그래프'], ['posters', '공연별 포스터 장']];
+    const shown = Object.assign({ spend: true, counts: true, bests: true, chart: true, posters: true }, prefs.show || {});
     const touch = window.matchMedia && matchMedia('(pointer: coarse)').matches;
     const html = `${head('이미지 저장')}
       <div class="dlg-body">
-        ${previewNote('이미지 저장')}
+        ${previewNote('이미지 저장')}${inAppBox(true)}
         <div class="ex-opts">
           <fieldset class="field" style="border:0;margin:0;padding:0"><legend>크기</legend>
             <div class="seg" style="grid-template-columns:1fr 1fr"><label><input type="radio" name="format" value="story"${prefs.format === 'story' ? ' checked' : ''}>세로 9:16</label><label><input type="radio" name="format" value="square"${prefs.format === 'square' ? ' checked' : ''}>정사각 1:1</label></div></fieldset>
           <fieldset class="field" style="border:0;margin:0;padding:0"><legend>포스터 배치</legend>
             <div class="seg" style="grid-template-columns:1fr 1fr"><label><input type="radio" name="layout" value="checker"${prefs.layout === 'checker' ? ' checked' : ''}>날짜와 번갈아</label><label><input type="radio" name="layout" value="grid"${prefs.layout === 'grid' ? ' checked' : ''}>촘촘하게</label></div></fieldset>
         </div>
+        <fieldset class="field" style="border:0;margin:0;padding:0"><legend>보여줄 내용 <small style="font-weight:400;color:var(--muted)">(관람 횟수는 늘 들어가요)</small></legend>
+          <div class="ex-show">${SHOW.map(([k, lb]) => `<label><input type="checkbox" name="show" value="${k}"${shown[k] ? ' checked' : ''}>${lb}</label>`).join('')}</div></fieldset>
         <label style="display:flex;gap:10px;align-items:center;font-size:var(--f-s)"><input type="checkbox" id="hi" ${prefs.scale === 2 ? 'checked' : ''} style="width:20px;height:20px;accent-color:var(--accent)"> 2배 해상도</label>
         <p class="help" id="ex-info" style="margin:0"></p>
         <div id="ex-pages" class="ex-pages"><p class="ex-loading">이미지를 만드는 중이에요…</p></div>
         <div class="share-box">
           <div class="row"><button class="btn-solid" type="button" id="ex-save" disabled>이미지 모두 저장</button></div>
-          ${touch ? '<p class="help" style="margin:0">미리보기 이미지를 길게 누르면 사진 앱에 저장돼요.</p>' : ''}
+          ${touch && !INAPP ? '<p class="help" style="margin:0">미리보기 이미지를 길게 누르면 사진 앱에 저장돼요.</p>' : ''}
         </div>
       </div>`;
     const d = openDialog(html, { cls: 'wide' });
@@ -1410,10 +1504,13 @@
       const format = d.querySelector('input[name=format]:checked').value;
       const layout = d.querySelector('input[name=layout]:checked').value;
       const scale = d.querySelector('#hi').checked ? 2 : 1;
-      state.exportPrefs = { format, layout, scale };
+      const show = {};
+      d.querySelectorAll('input[name=show]').forEach((c) => { show[c.value] = c.checked; });
+      d.querySelector('input[name=layout]').closest('fieldset').hidden = !show.posters; // 포스터 장을 빼면 배치 고르기도 숨김
+      state.exportPrefs = { format, layout, scale, show };
       save();
       try {
-        const pages = await R.renderAll({ format, layout, state, st, tokens, year: year(), getBlob: DB.getPoster, scale, chartStyle: state.chartStyle === 'bar' ? 'bar' : 'poster' });
+        const pages = await R.renderAll({ format, layout, state, st, tokens, year: year(), getBlob: DB.getPoster, scale, show, chartStyle: state.chartStyle === 'bar' ? 'bar' : 'poster' });
         if (my !== job) return;
         const blobs = await Promise.all(pages.map((c) => new Promise((res) => c.toBlob(res, 'image/png'))));
         if (my !== job) return;
@@ -1427,7 +1524,7 @@
         box.innerHTML = '<p class="err">이미지를 만들지 못했어요. 포스터가 너무 많으면 ‘촘촘하게’를 골라 보세요.</p>';
       }
     }
-    d.querySelectorAll('input[name=format], input[name=layout], #hi').forEach((el) => el.addEventListener('change', build));
+    d.querySelectorAll('input[name=format], input[name=layout], input[name=show], #hi').forEach((el) => el.addEventListener('change', build));
     d.querySelector('#ex-pages').addEventListener('click', (e) => { const b = e.target.closest('[data-dl]'); if (b) download(files[+b.dataset.dl], files[+b.dataset.dl].name); });
     const saveAll = async () => { for (let i = 0; i < files.length; i++) { download(files[i], files[i].name); await new Promise((r) => setTimeout(r, 450)); } };
     d.querySelector('#ex-save').addEventListener('click', async () => { await saveAll(); toast(files.length > 1 ? `${files.length}장을 저장했어요` : '저장했어요'); });
@@ -1437,7 +1534,7 @@
   /* ---------- 라우팅 ---------- */
   function render() {
     document.title = `${state.nickname ? year() : THIS_YEAR} CONCERT RECAP`;
-    if (!state.nickname) { viewOnboard(); return; }
+    if (!state.nickname || location.hash === '#start') { viewOnboard(); return; }
     if (location.hash === '#recap') viewRecap();
     else viewMain();
   }
@@ -1450,7 +1547,8 @@
       case 'add': openForm(); break;
       case 'import': openImport(); break;
       case 'theme': openTheme(); break;
-      case 'data': openData(); break;
+      case 'data': case 'settings': openSettings(); break;
+      case 'backup-open': openBackup(); break;
       case 'detail': openDetail(el.dataset.id); break;
       case 'basis': openBasis(el.dataset.k); break;
       case 'dups': openDups(); break;
@@ -1513,5 +1611,5 @@
   }
   init();
 
-  window.CR.app = { get state() { return state; }, render, stats };
+  window.CR.app = { get state() { return state; }, render, stats, loadSample };
 })();

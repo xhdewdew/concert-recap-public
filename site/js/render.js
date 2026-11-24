@@ -241,27 +241,40 @@
     ctx.fillText('회', rx - 6 + cw + 10, y + 10 + cs * 0.86);
     y = Math.max(ty - ts * 1.12, y + 10 + cs * 0.86) + 110;
 
-    // 지출 · 공연장 · 아티스트 한 줄
-    ctx.fillStyle = t.rule; ctx.fillRect(M, y - 50, W - M * 2, 2);
+    // 보여줄 내용 (이미지 저장 창에서 고름)
+    const sh = show(opts);
     const inner = W - M * 2;
-    const spendW = inner * 0.5 - 44;
-    label(ctx, t, '티켓 지출', M, y, 'left', 26);
-    let ss = 92;
-    const spend = U.won(st.spend);
-    font(ctx, 800, ss);
-    while (ss > 44 && measureTracked(ctx, spend, -ss * 0.05) > spendW) { ss -= 2; font(ctx, 800, ss); }
-    ctx.fillStyle = t.ink;
-    tracked(ctx, spend, M - 3, y + 100, -ss * 0.05);
-    [['공연장', st.venueCount, '곳'], ['아티스트', st.artistCount, '팀']].forEach(([lb, v, unit], i) => {
-      const x = M + inner * 0.5 + (inner * 0.25) * i;
-      label(ctx, t, lb, x, y, 'left', 26);
-      font(ctx, 800, 100); ctx.fillStyle = t.ink;
-      const w = tracked(ctx, String(v), x - 4, y + 100, -100 * 0.06);
-      font(ctx, 700, 38); ctx.fillText(unit, x + w + 8, y + 100);
-    });
-    y += 100 + 104;
+    const rowsH = (sh.spend || sh.counts ? 204 : 0) + (sh.bests ? 196 : 0);
+    // 월별 그래프를 빼면 숫자 줄을 아래쪽에 붙여서 빈 곳이 가운데로 가게
+    if (!sh.chart && rowsH) { const shift = (H - M - 80) - (y + rowsH - 100); if (shift > 0) y += shift; }
+
+    // 지출 · 공연장 · 아티스트 한 줄
+    if (sh.spend || sh.counts) {
+      ctx.fillStyle = t.rule; ctx.fillRect(M, y - 50, W - M * 2, 2);
+      if (sh.spend) {
+        const spendW = sh.counts ? inner * 0.5 - 44 : inner;
+        label(ctx, t, '티켓 지출', M, y, 'left', 26);
+        let ss = sh.counts ? 92 : 120;
+        const spend = U.won(st.spend);
+        font(ctx, 800, ss);
+        while (ss > 44 && measureTracked(ctx, spend, -ss * 0.05) > spendW) { ss -= 2; font(ctx, 800, ss); }
+        ctx.fillStyle = t.ink;
+        tracked(ctx, spend, M - 3, y + 100, -ss * 0.05);
+      }
+      if (sh.counts) {
+        [['공연장', st.venueCount, '곳'], ['아티스트', st.artistCount, '팀']].forEach(([lb, v, unit], i) => {
+          const x = sh.spend ? M + inner * 0.5 + (inner * 0.25) * i : M + (inner * 0.5) * i;
+          label(ctx, t, lb, x, y, 'left', 26);
+          font(ctx, 800, 100); ctx.fillStyle = t.ink;
+          const w = tracked(ctx, String(v), x - 4, y + 100, -100 * 0.06);
+          font(ctx, 700, 38); ctx.fillText(unit, x + w + 8, y + 100);
+        });
+      }
+      y += 100 + 104;
+    }
 
     // 가장 많이 본 아티스트 · 가장 자주 간 공연장
+    if (sh.bests) {
     ctx.fillStyle = t.rule; ctx.fillRect(M, y - 50, W - M * 2, 2);
     const half = inner / 2;
     [['가장 많이 본 아티스트', st.artists, '팀'], ['가장 자주 간 공연장', st.venues, '곳']].forEach(([lb, list, unitWord], i) => {
@@ -275,8 +288,10 @@
       }
     });
     y += 196; // 아래 가로선과 위 칸들 사이 간격을 맞춤 (글자 아래 약 54px)
+    }
 
     // 월별
+    if (!sh.chart) { footer(ctx, t, W, H, M, pageNo, total); return; }
     ctx.fillStyle = t.rule; ctx.fillRect(M, y - 44, W - M * 2, 2);
     const chTop = y + 40;
     const chH = H - M - 60 - chTop;
@@ -311,27 +326,33 @@
     let ty = base - (tl.length - 1) * ts * 1.14;
     for (const l of tl) { ctx.fillText(fit(ctx, l, tw), tx, ty); ty += ts * 1.14; }
 
-    // 숫자 4칸
+    // 숫자 칸 (관람은 늘, 나머지는 고른 것만)
+    const sh = show(opts);
     let y = base + 70;
+    const rowsH = 150 + (sh.bests ? 120 : 0);
+    if (!sh.chart) { const shift = (H - M - 80) - (y + rowsH - 40); if (shift > 0) y += shift; }
     ctx.fillStyle = t.rule; ctx.fillRect(M, y - 34, W - M * 2, 2);
     const cw = (W - M * 2) / 4;
-    [['관람', String(st.count), '회'], ['공연장', String(st.venueCount), '곳'], ['아티스트', String(st.artistCount), '팀']].forEach(([lb, v, u], i) => {
+    const cells = [['관람', String(st.count), '회']].concat(sh.counts ? [['공연장', String(st.venueCount), '곳'], ['아티스트', String(st.artistCount), '팀']] : []);
+    cells.forEach(([lb, v, u], i) => {
       const x = M + cw * i;
       label(ctx, t, lb, x, y, 'left', 20);
       font(ctx, 800, 92); ctx.fillStyle = t.ink;
       const w = tracked(ctx, v, x - 3, y + 92, -92 * 0.06);
       font(ctx, 700, 30); ctx.fillText(u, x + w + 6, y + 92);
     });
-    const sx = M + cw * 3;
-    label(ctx, t, '티켓 지출', sx, y, 'left', 20);
-    let ss = 50; font(ctx, 800, ss); ctx.fillStyle = t.ink;
-    const sp = U.won(st.spend);
-    while (ss > 26 && ctx.measureText(sp).width > cw) { ss -= 2; font(ctx, 800, ss); }
-    ctx.fillText(sp, sx, y + 88);
+    if (sh.spend) {
+      const sx = M + cw * cells.length, sw = W - M - sx;
+      label(ctx, t, '티켓 지출', sx, y, 'left', 20);
+      let ss = cells.length > 1 ? 50 : 80; font(ctx, 800, ss); ctx.fillStyle = t.ink;
+      const sp = U.won(st.spend);
+      while (ss > 26 && ctx.measureText(sp).width > sw) { ss -= 2; font(ctx, 800, ss); }
+      ctx.fillText(sp, sx, y + 88);
+    }
     y += 150;
 
     // 베스트 2칸
-    [['가장 많이 본 아티스트', st.artists, '팀'], ['가장 자주 간 공연장', st.venues, '곳']].forEach(([lb, list, unitWord], i) => {
+    if (sh.bests) [['가장 많이 본 아티스트', st.artists, '팀'], ['가장 자주 간 공연장', st.venues, '곳']].forEach(([lb, list, unitWord], i) => {
       const x = M + ((W - M * 2) / 2 + 12) * i, w = (W - M * 2) / 2 - 12;
       label(ctx, t, lb, x, y, 'left', 20);
       font(ctx, 800, 34); ctx.fillStyle = t.ink;
@@ -341,7 +362,8 @@
         ctx.fillText(`${list.max}회${list.top.length > 1 ? ` · 공동 ${list.top.length}${unitWord}` : ''}`, x, y + 76);
       }
     });
-    y += 120;
+    if (sh.bests) y += 120;
+    if (!sh.chart) { footer(ctx, t, W, H, M, pageNo, total); square(ctx, t, W - M - 22, base - 4, 22); return; }
     label(ctx, t, '월별 관람', M, y, 'left', 20);
     const top0 = y + 10;
     const h = H - M - 56 - top0;
@@ -351,6 +373,9 @@
     footer(ctx, t, W, H, M, pageNo, total);
     square(ctx, t, W - M - 22, base - 4, 22);
   }
+
+  // 보여줄 내용: 기본은 모두 보이기
+  function show(opts) { return Object.assign({ spend: true, counts: true, bests: true, chart: true, posters: true }, (opts && opts.show) || {}); }
 
   function annotate(ctx, t, st, tops, W, M, size) {
     if (!st.peakMonths.length) return;
@@ -446,9 +471,9 @@
     ctx.fillText(fit(ctx, r.venue || '', inner), x + p, y + h - p);
   }
 
-  function pageCount(format, layout, n) {
+  function pageCount(format, layout, n, posters) {
     const per = PER_PAGE[format][layout];
-    return 1 + Math.ceil(n / per);
+    return 1 + (posters === false ? 0 : Math.ceil(n / per));
   }
 
   async function renderAll(opts) {
@@ -458,7 +483,8 @@
     const nick = (state.nickname || '나').trim();
     const items = st.included.slice();
     const per = PER_PAGE[format][layout];
-    const total = 1 + Math.ceil(items.length / per);
+    const sh = show(opts);
+    const total = 1 + (sh.posters ? Math.ceil(items.length / per) : 0);
     const Y = String(opts.year || 2026);
     const texts = [nick, Y + ' 0123456789', '의 년 콘서트 기록 관람 티켓 지출 공연장 아티스트 가장 많이 본 자주 간 월별 관람 완료 기준 공연 포스터 요일 기록 없음 이 바빴어요 회씩 외 공동 올해 번 에 갔어요 에서 을 봤고 썼어요 곳 concert recap',
       ...items.map((r) => r.title + r.venue + (r.artists || []).join(''))];
@@ -477,12 +503,12 @@
     };
     {
       const [c, ctx] = mk();
-      const co = { chartStyle: opts.chartStyle || 'poster', items, imgs, year: Y };
+      const co = { chartStyle: opts.chartStyle || 'poster', items, imgs, year: Y, show: sh };
       if (format === 'story') coverStory(ctx, W, H, tokens, st, nick, 1, total, co);
       else coverSquare(ctx, W, H, tokens, st, nick, 1, total, co);
       pages.push(c);
     }
-    for (let i = 0; i < items.length; i += per) {
+    for (let i = 0; sh.posters && i < items.length; i += per) {
       const [c, ctx] = mk();
       posterPage(ctx, W, H, tokens, items.slice(i, i + per), imgs.slice(i, i + per),
         { format, layout, nick, pageNo: pages.length + 1, total, startNo: i + 1, countAll: items.length });

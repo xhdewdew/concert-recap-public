@@ -202,6 +202,7 @@
     cost: /^(본인\s*부담\s*금액|금액|지출|가격|cost|price)$/i,
     status: /^(상태|관람\s*상태|status)$/i,
     memo: /^(메모|memo|note)$/i,
+    seat: /^(좌석|seat)$/i,
   };
   const STATUS = [
     ['done', /^(완료|관람\s*완료|봤음|done|seen)$/i],
@@ -255,6 +256,7 @@
           vendor: vendorId(get('vendor')),
           vendorOther: vendorId(get('vendor')) === 'other' ? get('vendor') : '',
           cost: isFinite(cost) ? cost : null,
+          seat: get('seat'),
           status,
           memo: get('memo'),
         },
