@@ -109,21 +109,77 @@
   }
 
   /* ---- 브라우저에서만 ---- */
+  /* 서버(무료 요금제) 호출 줄이기
+     - 같은 요청은 이 기기에 12시간 저장해 두고 다시 쓴다
+     - 하루 무료 사용량이 다 차면(Cloudflare 1027) 다음 날 오전 9시까지 서버를 부르지 않는다 */
+  const CACHE_KEY = 'concert-recap-kopis-cache';
+  const LIMIT_KEY = 'concert-recap-kopis-limit';
+  const HEALTH_KEY = 'concert-recap-kopis-on';
+  const TTL = 12 * 3600 * 1000;
+  const LIMIT_MSG = '오늘 자동 불러오기 사용량이 다 찼어요. 오전 9시에 다시 열려요. 직접 입력은 지금도 돼요.';
+  const ls = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 저장 공간 없음 */ } },
+  };
+  const mem = new Map();
+  function cacheGet(key) {
+    const hit = mem.get(key) || (ls.get(CACHE_KEY) || {})[key];
+    return hit && Date.now() - hit.at < TTL ? hit.v : null;
+  }
+  function cachePut(key, v) {
+    const e = { at: Date.now(), v };
+    mem.set(key, e);
+    const all = ls.get(CACHE_KEY) || {};
+    all[key] = e;
+    const keys = Object.keys(all).sort((a, b) => all[b].at - all[a].at);
+    for (const k of keys.slice(60)) delete all[k]; // 최근 60개만
+    ls.set(CACHE_KEY, all);
+  }
+  function limited() { const u = ls.get(LIMIT_KEY); return u && Date.now() < u ? LIMIT_MSG : ''; }
+  function markLimited() {
+    const d = new Date();
+    ls.set(LIMIT_KEY, Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)); // 다음 UTC 0시 = 한국 오전 9시
+  }
+  const limitError = () => { const e = new Error('limit'); e.reason = LIMIT_MSG; e.limit = true; return e; };
+  // Cloudflare가 하루 한도를 넘겼을 때 주는 화면(1027, 429)인지
+  async function isLimitPage(r) {
+    if (r.status === 429) return true;
+    if (/json/.test(r.headers.get('content-type') || '')) return false;
+    try { return /1027|rate limited/i.test(await r.clone().text()); } catch (e) { return false; }
+  }
+
   let healthP = null;
   async function get(params, ms) {
+    if (limited()) throw limitError();
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), ms || 30000);
     try {
       const r = await fetch('/api/kopis?' + new URLSearchParams(params).toString(), { signal: ctrl.signal });
+      if (!r.ok && await isLimitPage(r)) { markLimited(); throw limitError(); }
       return r;
     } finally { clearTimeout(t); }
   }
+  /* JSON 요청: 저장된 결과가 있으면 서버를 부르지 않는다 */
+  async function getJSON(params, ms) {
+    const key = new URLSearchParams(params).toString();
+    const hit = cacheGet(key);
+    if (hit) return hit;
+    const r = await get(params, ms);
+    if (!r.ok) throw await fail(r);
+    const j = await r.json();
+    cachePut(key, j);
+    return j;
+  }
   function enabled() {
     if (!healthP) {
-      healthP = get({ health: 1 }, 4000)
-        .then((r) => (r.ok && /json/.test(r.headers.get('content-type') || '') ? r.json() : { enabled: false }))
-        .then((j) => !!j.enabled)
-        .catch(() => false);
+      const known = ls.get(HEALTH_KEY);
+      if (limited() || (known && Date.now() - known < 6 * 3600 * 1000)) healthP = Promise.resolve(true);
+      else {
+        healthP = get({ health: 1 }, 4000)
+          .then((r) => (r.ok && /json/.test(r.headers.get('content-type') || '') ? r.json() : { enabled: false }))
+          .then((j) => { if (j.enabled) ls.set(HEALTH_KEY, Date.now()); return !!j.enabled; })
+          .catch((e) => !!(e && e.limit));
+      }
     }
     return healthP;
   }
@@ -131,10 +187,14 @@
   async function fail(r) {
     let reason = '';
     try { const j = await r.json(); reason = j.reason || j.error || ''; } catch (e) { /* 본문 없음 */ }
+    reason = reason.replace(/^중계 서버:\s*/, '');
     const e = new Error(reason || ('서버 응답 ' + r.status)); e.reason = reason || ('서버 응답 ' + r.status);
     return e;
   }
   const why = (e) => (e && e.reason) || (e && e.name === 'AbortError' ? '응답 시간 초과' : '');
+  /* 목록 미리보기 포스터: 보는 사람 폰이 KOPIS에서 바로 받는다(서버 호출 없음). 안 되면 서버로 */
+  const posterSrc = (url) => String(url || '').replace(/^http:\/\//, 'https://');
+  const posterFallback = (url) => '/api/kopis?poster=' + encodeURIComponent(url);
   async function searchAll(info) {
     const kws = keywords(info.title, info.date ? 3 : 2);
     if (!kws.length) return { list: [], confident: false };
@@ -142,23 +202,19 @@
     const errs = [];
     const lists = [];
     for (const q of kws) { // 한 번에 하나씩: KOPIS가 몰린 요청을 거절해서
-      const l = await get(Object.assign({ q }, params))
-        .then(async (r) => { if (!r.ok) throw await fail(r); return r.json(); })
+      const l = await getJSON(Object.assign({ q }, params))
         .then((j) => j.results || [])
         .catch((e) => { errs.push(e); return []; });
       lists.push(l);
+      if (errs.length && errs[errs.length - 1].limit) break;
       if (rank(l, info).confident) break;
     }
-    if (errs.length === kws.length) { const e = new Error('kopis'); e.reason = why(errs[0]); throw e; }
+    if (errs.length && errs.length === lists.length) { const e = new Error('kopis'); e.reason = why(errs[errs.length - 1]); throw e; }
     const seen = new Map();
     for (const l of lists) for (const x of l) if (!seen.has(x.id)) seen.set(x.id, x);
     return rank([...seen.values()], info);
   }
-  async function detail(id) {
-    const r = await get({ id });
-    if (!r.ok) throw new Error('detail');
-    return r.json();
-  }
+  const detail = (id) => getJSON({ id });
   async function posterBlob(url) {
     if (!url) return null;
     const r = await get({ poster: url });
@@ -167,14 +223,14 @@
   }
 
   async function json(params) {
-    let r;
-    try { r = await get(params); } catch (e) { const x = new Error('kopis'); x.reason = why(e) || '사이트 서버에 연결하지 못했어요'; throw x; }
-    if (!r.ok) throw await fail(r);
-    return r.json();
+    try { return await getJSON(params); } catch (e) {
+      if (e.reason) throw e;
+      const x = new Error('kopis'); x.reason = why(e) || '사이트 서버에 연결하지 못했어요'; throw x;
+    }
   }
   const venueSearch = (q) => json({ venue: q }).then((j) => j.results || []);
   const placeHalls = (id) => json({ place: id }).then((j) => j.halls || []);
   const artistSearch = (q, date, year) => json(Object.assign({ artist: q }, date ? { date } : { year: year || new Date().getFullYear() })).then((j) => j.results || []);
 
-  return { keywords, score, rank, days, castList, titleArtist, pickArtists, norm, enabled, searchAll, detail, posterBlob, venueSearch, placeHalls, artistSearch, why };
+  return { keywords, score, rank, days, castList, titleArtist, pickArtists, norm, enabled, limited, searchAll, detail, posterBlob, posterSrc, posterFallback, venueSearch, placeHalls, artistSearch, why };
 });

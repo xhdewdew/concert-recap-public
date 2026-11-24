@@ -688,7 +688,7 @@
         (remote || []).forEach((r) => { if (!rows.some((x) => S.norm(x.value) === S.norm(r.value))) rows.push(Object.assign({ src: 'KOPIS' }, r)); });
         list.innerHTML = rows.map((r, i) => `<button type="button" class="pick-item" data-i="${i}"><span><b>${esc(r.label)}</b>${r.meta ? `<small>${esc(r.meta)}</small>` : ''}</span><em>${r.src}</em></button>`).join('')
           + (state === 'loading' ? '<p class="pick-note">KOPIS에서 찾는 중…</p>' : '')
-          + (state === 'error' ? `<p class="pick-note">KOPIS에 연결하지 못했어요${reason ? ` · ${esc(reason)}` : ''}</p>` : '')
+          + (state === 'error' ? `<p class="pick-note">${K.limited() ? esc(K.limited()) : `KOPIS에 연결하지 못했어요${reason ? ` · ${esc(reason)}` : ''}`}</p>` : '')
           + (state === 'done' && !rows.length ? '<p class="pick-note">찾지 못했어요.</p>' : '')
           + `<button type="button" class="pick-add" data-add="1">목록에 없으면 ‘${esc(q)}’로 추가</button>`;
         list.hidden = false;
@@ -704,7 +704,6 @@
         const q = input.value.trim();
         clearTimeout(timer); seq++;
         draw(q);
-        if (q.length >= 2) timer = setTimeout(() => remote(q), 800);
       });
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); clearTimeout(timer); remote(input.value.trim()); } });
       go.addEventListener('click', () => { clearTimeout(timer); const q = input.value.trim(); if (!q) { input.focus(); return; } draw(q); remote(q); });
@@ -860,9 +859,13 @@
       if (!res) { kres.innerHTML = ''; return; }
       if (!kList.length) { kres.innerHTML = '<p class="help">KOPIS에서 찾지 못했어요. 공연명을 고쳐서 다시 찾아보세요.</p>'; return; }
       kres.innerHTML = `<div class="k-list">${kList.map((c, i) => `<button type="button" class="k-item" data-k="${i}" aria-pressed="${c.id === chosenId}">
-          <span class="k-img">${c.poster ? `<img src="/api/kopis?poster=${encodeURIComponent(c.poster)}" alt="" loading="lazy">` : ''}</span>
+          <span class="k-img">${c.poster ? `<img src="${esc(K.posterSrc(c.poster))}" data-fb="${esc(K.posterFallback(c.poster))}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</span>
           <span class="k-txt"><b>${esc(c.title)}</b><small>${U.dots(c.from)} – ${U.md(c.to)} · ${esc(cleanVenue(c.venue))}</small></span></button>`).join('')}</div>
         <p class="src">출처: KOPIS 공연예술통합전산망</p>`;
+      // 폰에서 KOPIS 포스터를 바로 못 받으면 사이트 서버로 한 번 더
+      kres.querySelectorAll('img[data-fb]').forEach((im) => im.addEventListener('error', () => {
+        if (im.dataset.fb && !K.limited()) { const u = im.dataset.fb; delete im.dataset.fb; im.src = u; } else im.remove();
+      }));
     };
     const choose = async (c) => {
       kres.querySelectorAll('.k-item').forEach((b) => b.setAttribute('aria-pressed', String(kList[+b.dataset.k] && kList[+b.dataset.k].id === c.id)));
@@ -898,7 +901,7 @@
       kres.innerHTML = '<p class="help">찾는 중…</p>';
       const first = rec ? (datesBox.querySelector('input[name=date]') || {}).value : [...selected].sort()[0];
       try { drawResults(await K.searchAll({ title: q, date: first || '', venue: f.venue.value, year: year() })); }
-      catch (e) { const r = K.why(e); kres.innerHTML = `<p class="help">KOPIS에 연결하지 못했어요${r ? ` · ${esc(r)}` : ''}</p>`; }
+      catch (e) { const r = K.why(e); kres.innerHTML = `<p class="help">${K.limited() ? esc(K.limited()) : `KOPIS에 연결하지 못했어요${r ? ` · ${esc(r)}` : ''}`}</p>`; }
     };
     d.querySelector('#k-go').addEventListener('click', runSearch);
     kq.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); runSearch(); } });
@@ -906,6 +909,7 @@
       kopisOn = on;
       if (!on) return;
       kbox.hidden = false;
+      if (K.limited() && !opts.kopis) kres.innerHTML = `<p class="help">${esc(K.limited())}</p>`;
       if (opts.kopis) {
         drawResults(opts.kopis);
         if (opts.kopis.confident && opts.kopis.list[0]) choose(opts.kopis.list[0]);
