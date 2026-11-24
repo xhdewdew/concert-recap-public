@@ -299,8 +299,7 @@
     const tops = opts.chartStyle === 'bar' ? chart(ctx, t, st, M, chTop + 40, W - M * 2, chH - 40, { label: 22 }).map(([a, b]) => [a, b - 34])
       : posterChart(ctx, t, st, M, chTop, W - M * 2, chH, { label: 22, rows, items: opts.items, imgs: opts.imgs });
     annotate(ctx, t, st, tops, W, M, 24);
-    const highest = Math.min(...tops.map((p) => p[1]));
-    label(ctx, t, '월별 관람', M, Math.max(y, highest - 40), 'left', 24);
+    label(ctx, t, '월별 관람', M, y, 'left', 24); // 그래프 높이와 상관없이 가로선 바로 아래에 고정
     footer(ctx, t, W, H, M, pageNo, total);
   }
 
