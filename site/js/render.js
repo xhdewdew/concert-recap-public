@@ -104,14 +104,15 @@
   function chart(ctx, t, st, x, y, w, h, opt) {
     opt = opt || {};
     const max = Math.max(1, st.monthMax);
-    const slot = w / 12;
+    const n = st.bins ? st.bins.length : 12;
+    const slot = w / n;
     const bw = Math.max(6, slot * (opt.barRatio || 0.36));
     const base = y + h;
     const lblSize = opt.label || 22;
     ctx.strokeStyle = t.ink; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(x, base + 0.5); ctx.lineTo(x + w, base + 0.5); ctx.stroke();
     const tops = [];
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < n; i++) {
       const c = st.months[i];
       const bh = c ? Math.max(4, (h - lblSize * 1.6) * (c / max)) : 0;
       const bx = x + slot * i + (slot - bw) / 2;
@@ -126,7 +127,7 @@
       tops.push([bx + bw / 2, base - bh]);
       font(ctx, 400, lblSize);
       ctx.fillStyle = t.muted; ctx.textAlign = 'center';
-      ctx.fillText(String(i + 1), bx + bw / 2, base + lblSize * 1.35);
+      ctx.fillText(I.tick(st, i), bx + bw / 2, base + lblSize * 1.35);
     }
     ctx.textAlign = 'left';
     return tops;
@@ -142,11 +143,13 @@
   function posterChart(ctx, t, st, x, y, w, h, opt) {
     const lbl = opt.label || 22;
     const rows = opt.rows || 1;
-    const per = 12 / rows;
+    const n = st.bins ? st.bins.length : 12;
+    const per = Math.ceil(n / rows);
     const rowH = h / rows;
     const slot = w / per;
-    const byMonth = Array.from({ length: 12 }, () => []);
-    (opt.items || []).forEach((r, i) => byMonth[Number(r.date.slice(5, 7)) - 1].push(opt.imgs[i]));
+    const byMonth = Array.from({ length: n }, () => []);
+    const binOf = st.binOf || ((r) => Number(r.date.slice(5, 7)) - 1);
+    (opt.items || []).forEach((r, i) => byMonth[binOf(r)].push(opt.imgs[i]));
     const max = Math.max(1, ...byMonth.map((l) => l.length));
     const room = rowH - lbl * 1.9 - lbl * 1.8;
     const tw = Math.min(slot * 0.72, opt.maxW || 150);
@@ -159,6 +162,7 @@
       ctx.beginPath(); ctx.moveTo(x, base + 0.5); ctx.lineTo(x + w, base + 0.5); ctx.stroke();
       for (let j = 0; j < per; j++) {
         const i = r * per + j;
+        if (i >= n) break;
         const list = byMonth[i];
         const cx = x + slot * j + slot / 2;
         const peak = list.length > 0 && list.length === st.monthMax;
@@ -174,7 +178,7 @@
           ctx.fillText(String(list.length), cx, top - lbl * 0.45);
         }
         font(ctx, peak ? 700 : 400, lbl); ctx.fillStyle = peak ? t.accentText : t.muted; ctx.textAlign = 'center';
-        ctx.fillText(rows > 1 ? I.mon(i + 1) : String(i + 1), cx, base + lbl * 1.35);
+        ctx.fillText(rows > 1 && !st.all ? I.mon(i + 1) : I.tick(st, i), cx, base + lbl * 1.35);
         tops.push([cx, top - lbl * 1.4]);
       }
     }
@@ -243,8 +247,8 @@
   function coverStory(ctx, W, H, t, st, nick, pageNo, total, opts) {
     const M = 64;
     label(ctx, t, nick, M, M + 22, 'left', 26);
-    const Y = String(opts.year || 2026);
-    label(ctx, t, Y + ' concert recap', W - M, M + 22, 'right', 26);
+    const { big: Y, text: YT } = years(st, opts);
+    label(ctx, t, YT + ' concert recap', W - M, M + 22, 'right', 26);
 
     // 굵은 연도: 화면 안에 들어오는 크기
     let size = 400;
@@ -261,7 +265,7 @@
     const tw = W * 0.5 - M;
     let ts = 54;
     font(ctx, 800, ts);
-    const fixed = [tr('{y}년', { y: Y }), tr('콘서트 기록')];
+    const fixed = [tr('{y}년', { y: YT }), tr('콘서트 기록')];
     const nl = tr('{n}의', { n: nick });
     while (ts > 34 && (fixed.some((l) => ctx.measureText(l).width > tw) || ctx.measureText(nl).width > tw * 2)) { ts -= 2; font(ctx, 800, ts); }
     const titleLines = wrap(ctx, nl, tw, 3).concat(fixed);
@@ -337,27 +341,28 @@
     const tops = opts.chartStyle === 'bar' ? chart(ctx, t, st, M, chTop + 40, W - M * 2, chH - 40, { label: 22 }).map(([a, b]) => [a, b - 34])
       : posterChart(ctx, t, st, M, chTop, W - M * 2, chH, { label: 22, rows, items: opts.items, imgs: opts.imgs });
     annotate(ctx, t, st, tops, W, M, 24);
-    label(ctx, t, tr('월별 관람'), M, y, 'left', 24); // 그래프 높이와 상관없이 가로선 바로 아래에 고정
+    label(ctx, t, tr(st.all ? '연도별 관람' : '월별 관람'), M, y, 'left', 24); // 그래프 높이와 상관없이 가로선 바로 아래에 고정
     footer(ctx, t, W, H, M, pageNo, total);
   }
 
   function coverSquare(ctx, W, H, t, st, nick, pageNo, total, opts) {
     const M = 56;
     label(ctx, t, nick, M, M + 18, 'left', 22);
-    const Y = String(opts.year || 2026);
-    label(ctx, t, Y + ' concert recap', W - M, M + 18, 'right', 22);
-    // 20²⁶ (앞 두 자리 + 작게 뒤 두 자리)
-    const size = 330;
+    const { big: Y, text: YT } = years(st, opts);
+    label(ctx, t, YT + ' concert recap', W - M, M + 18, 'right', 22);
+    // 20²⁶ (앞 + 작게 뒤 두 자리). 전체 기간은 ~20²⁶
+    const size = Y.length > 4 ? 290 : 330;
     font(ctx, 300, size);
     ctx.fillStyle = t.accentLarge;
     const base = M + 40 + size * 0.74;
-    const w20 = tracked(ctx, Y.slice(0, 2), M - 10, base, -size * 0.06);
+    const w20 = tracked(ctx, Y.slice(0, -2), M - 10, base, -size * 0.06);
     font(ctx, 300, size * 0.5);
-    tracked(ctx, Y.slice(2), M - 10 + w20 + 6, base - size * 0.36, -size * 0.03);
+    const w26 = tracked(ctx, Y.slice(-2), M - 10 + w20 + 6, base - size * 0.36, -size * 0.03);
+    const numEnd = M - 10 + w20 + 6 + w26;
     // 제목
-    const tx = W * 0.62, tw = W - M - tx;
+    const tx = Math.max(W * 0.62, numEnd + 28), tw = W - M - tx; // 큰 숫자와 겹치지 않게
     let ts = 40; font(ctx, 800, ts);
-    const fixed = [tr('{y}년', { y: Y }), tr('콘서트 기록')];
+    const fixed = [tr('{y}년', { y: YT }), tr('콘서트 기록')];
     const nl = tr('{n}의', { n: nick });
     while (ts > 26 && (fixed.some((l) => ctx.measureText(l).width > tw) || ctx.measureText(nl).width > tw * 2)) { ts -= 2; font(ctx, 800, ts); }
     const tl = wrap(ctx, nl, tw, 3).concat(fixed);
@@ -403,7 +408,7 @@
     });
     if (sh.bests) y += 120;
     if (!sh.chart) { footer(ctx, t, W, H, M, pageNo, total); square(ctx, t, W - M - 22, base - 4, 22); return; }
-    label(ctx, t, tr('월별 관람'), M, y, 'left', 20);
+    label(ctx, t, tr(st.all ? '연도별 관람' : '월별 관람'), M, y, 'left', 20);
     const top0 = y + 10;
     const h = H - M - 56 - top0;
     const tops = opts.chartStyle === 'bar' ? chart(ctx, t, st, M, top0 + 30, W - M * 2, h - 30, { label: 20, barRatio: 0.34 }).map(([a, b]) => [a, b - 30])
@@ -413,6 +418,13 @@
     square(ctx, t, W - M - 22, base - 4, 22);
   }
 
+  let MULTI = false;
+  // 크게 쓰는 숫자(2026 / ~2026)와 글로 쓰는 기간(2026 / 2019–2026)
+  function years(st, opts) {
+    if (st && st.all) return { big: '~' + st.to, text: st.from === st.to ? String(st.to) : st.from + '–' + st.to };
+    const y = String(opts.year || 2026);
+    return { big: y, text: y };
+  }
   // 베스트 두 칸: [이름표, 목록, 공동 n팀/곳 문구]
   const BESTS = (st) => [[tr('가장 많이 본 아티스트'), st.artists, '공동 {n}팀'], [tr('가장 자주 간 공연장'), st.venues, '공동 {n}곳']];
   // 보여줄 내용: 기본은 모두 보이기
@@ -422,7 +434,7 @@
     if (!st.peakMonths.length) return;
     const pm = st.peakMonths[0];
     const [px, py] = tops[pm - 1];
-    const note = st.peakMonths.length > 1 ? tr('{ms}에 {n}회씩', { ms: I.mons(st.peakMonths, '·'), n: st.monthMax }) : tr('{m}이 가장 바빴어요', { m: I.mon(pm) });
+    const note = I.peak(st, '·', 'busy');
     font(ctx, 600, size);
     const nw = ctx.measureText(note).width;
     const right = px + 26 + nw < W - M;
@@ -467,7 +479,7 @@
         } else fallbackPoster(ctx, t, r, x + pad, y + pad, cw - pad * 2, ch - cap - pad);
         const fs = format === 'story' ? 22 : 18;
         font(ctx, 400, fs); ctx.fillStyle = t.accentText;
-        ctx.fillText(`( ${startNo + i} )  ${U.md(r.date)}`, x + pad, y + ch - cap + fs * 1.4);
+        ctx.fillText(`( ${startNo + i} )  ${MULTI ? U.dots(r.date) : U.md(r.date)}`, x + pad, y + ch - cap + fs * 1.4);
         font(ctx, 700, fs); ctx.fillStyle = t.ink;
         ctx.fillText(fit(ctx, r.title, cw - pad * 2), x + pad, y + ch - cap + fs * 2.75);
       });
@@ -495,7 +507,7 @@
     const p = format === 'story' ? 16 : 14;
     const inner = w - p * 2;
     font(ctx, 400, 22); ctx.fillStyle = t.accentText;
-    ctx.fillText(`( ${no} )`, x + p, y + p + 18);
+    ctx.fillText(MULTI ? `( ${no} )  ${r.date.slice(0, 4)}` : `( ${no} )`, x + p, y + p + 18);
     let ds = 96;
     font(ctx, 400, ds);
     while (ds > 40 && measureTracked(ctx, U.md(r.date), -ds * 0.05) > inner) { ds -= 2; font(ctx, 400, ds); }
@@ -526,8 +538,9 @@
     const per = PER_PAGE[format][layout];
     const sh = show(opts);
     const total = 1 + (sh.posters ? Math.ceil(items.length / per) : 0);
-    const Y = String(opts.year || 2026);
-    const texts = [nick, Y + ' 0123456789', 'concert recap', ...['{n}의', '{y}년', '콘서트 기록', '관람', '회', '곳', '팀', '티켓 지출', '공연장', '아티스트', '가장 많이 본 아티스트', '가장 자주 간 공연장',
+    MULTI = !!st.all; // 전체 기간이면 포스터 장 날짜에 연도도 쓴다
+    const Y = years(st, opts).text;
+    const texts = [nick, Y + ' ~–0123456789’', 'concert recap', tr('연도별 관람'), tr('{m}이 가장 바빴어요|year'), ...['{n}의', '{y}년', '콘서트 기록', '관람', '회', '곳', '팀', '티켓 지출', '공연장', '아티스트', '가장 많이 본 아티스트', '가장 자주 간 공연장',
       '월별 관람', '기록 없음', '공연 포스터', '{m}이 가장 바빴어요', '{ms}에 {n}회씩', '{n}회', '공동 {n}팀', '공동 {n}곳'].map((k) => tr(k)), ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(I.mon), ...[0, 1, 2, 3, 4, 5, 6].map(I.wdLong),
       ...items.map((r) => r.title + r.venue + (r.artists || []).join(''))];
     await ensureFonts(texts);

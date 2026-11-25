@@ -6,8 +6,15 @@
 
   // 기록할 연도: 처음 시작할 때 고르고, 백업·설정에서 바꾼다. 예전 기록(연도 없음)은 2026.
   const THIS_YEAR = new Date().getFullYear();
-  const year = () => { const y = Number(state && state.year); return y >= 2000 && y <= 2100 ? y : 2026; };
-  const yy = (y) => `${String(y).slice(0, 2)}<sup>${String(y).slice(2)}</sup>`;
+  // state.year: 숫자(한 해) 또는 'all'(전체 기간). year()는 검색 등에 쓰는 숫자라 전체 기간이면 올해를 준다
+  const ALL = () => !!state && state.year === 'all';
+  const year = () => { if (ALL()) return THIS_YEAR; const y = Number(state && state.year); return y >= 2000 && y <= 2100 ? y : 2026; };
+  const inYear = (r) => U.isDate(r.date) && (ALL() || r.date.slice(0, 4) === String(year()));
+  // 화면에 보이는 기간: 2026 / 2019–2026,  크게 쓰는 숫자: 2026 / ~2026
+  const span = (st) => { if (!ALL()) return String(year()); st = st || stats(); return st.from === st.to ? String(st.from) : `${st.from}–${st.to}`; };
+  const bigYear = (st) => (ALL() ? '~' + (st || stats()).to : String(year()));
+  const yy = (y) => `${String(y).slice(0, -2)}<sup>${String(y).slice(-2)}</sup>`;
+  const chartName = () => tr(ALL() ? '연도별 관람' : '월별 관람');
   const VENDORS = { nol: tr('NOL 티켓 (구 인터파크)'), ticketlink: tr('티켓링크'), melon: tr('멜론티켓'), yes24: tr('YES24 티켓'), other: tr('기타') };
   const STATUS = { done: tr('관람 완료'), planned: tr('관람 예정'), canceled: tr('취소·환불') };
   const TESS_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
@@ -24,7 +31,7 @@
   function save() {
     if (DB.save(state) === 'full') toast(tr('저장 공간이 가득 찼어요. 백업 후 오래된 포스터를 지워 주세요.'));
   }
-  function stats() { return S.compute(state.records, { year: year(), today: U.todayStr(), dupIgnore: state.dupIgnore }); }
+  function stats() { return S.compute(state.records, { year: ALL() ? 'all' : year(), today: U.todayStr(), dupIgnore: state.dupIgnore }); }
   const kopisFail = (reason) => { const r = I.reason(reason); return tr('KOPIS에 연결하지 못했어요') + (r ? ` · ${esc(r)}` : ''); };
   function nick() { return (state.nickname || '').trim() || tr('나'); }
 
@@ -192,7 +199,7 @@
 
   function galleryRecords() {
     return state.records
-      .filter((r) => U.isDate(r.date) && r.date.slice(0, 4) === String(year()) && r.status !== 'canceled')
+      .filter((r) => inYear(r) && r.status !== 'canceled')
       .sort(byDate);
   }
 
@@ -203,18 +210,21 @@
     // 시작 화면에서 언어를 바꾸면 페이지를 다시 여니, 쓰던 닉네임·연도를 잠깐 기억해 둔다
     let draft = {};
     try { draft = JSON.parse(sessionStorage.getItem('cr-ob-draft') || '{}') || {}; sessionStorage.removeItem('cr-ob-draft'); } catch (e) { /* 무시 */ }
-    const startYear = draft.year || (back ? year() : THIS_YEAR);
-    const years = [...new Set([THIS_YEAR - 1, THIS_YEAR, THIS_YEAR + 1, startYear])].sort();
+    const startYear = draft.year || (back ? (ALL() ? 'all' : year()) : THIS_YEAR);
+    const years = [...new Set([THIS_YEAR - 1, THIS_YEAR, THIS_YEAR + 1, startYear].filter((v) => v !== 'all'))].sort().concat('all');
+    const obMast = (v) => (v === 'all' ? '~' + THIS_YEAR : String(v));
+    const obTitle = (v) => (v === 'all' ? tr('지금까지 본 공연 기록') : tr('{y}년 공연 기록', { y: v }));
     app.innerHTML = `
       <main class="onboard">
-        <div class="onboard-mast" aria-hidden="true" id="ob-mast">${startYear}</div>
+        <div class="onboard-mast" aria-hidden="true" id="ob-mast">${obMast(startYear)}</div>
         <div class="onboard-body">
           ${inAppBox()}
           <div class="lang-pick" role="group" aria-label="Language">${I.LANGS.map(([k, v]) => `<button type="button" class="btn quiet" data-lang="${k}" aria-pressed="${I.lang === k}">${v}</button>`).join('')}</div>
-          <h1 id="ob-title">${tr('{y}년 공연 기록', { y: startYear })}</h1>
+          <h1 id="ob-title">${obTitle(startYear)}</h1>
           <form id="nick-form" novalidate>
             <fieldset class="field" style="border:0;margin:0;padding:0"><legend>${tr('몇 년도 공연을 기록할까요?')}</legend>
-              <div class="seg" style="grid-template-columns:repeat(${years.length},1fr)">${years.map((v) => `<label><input type="radio" name="year" value="${v}"${v === startYear ? ' checked' : ''}>${v}</label>`).join('')}</div>
+              <div class="seg" style="grid-template-columns:repeat(${years.length},1fr)">${years.map((v) => `<label><input type="radio" name="year" value="${v}"${v === startYear ? ' checked' : ''}>${v === 'all' ? tr('전체 기간') : v}</label>`).join('')}</div>
+              <small class="help" style="display:block;margin-top:6px">${tr('‘전체 기간’은 해를 가리지 않고 지금까지 본 공연을 모두 모아요.')}</small>
             </fieldset>
             <label class="field"><span>${tr('닉네임')}</span>
               <input type="text" name="nick" maxlength="20" autocomplete="nickname" placeholder="${tr('리캡에 들어갈 이름')}" value="${esc(draft.nick != null ? draft.nick : back ? state.nickname : '')}" required>
@@ -229,10 +239,10 @@
         <p class="onboard-foot">${back && state.records.length ? tr('지금까지 쓴 기록 {n}건은 그대로 있어요. ', { n: state.records.length }) : ''}${tr('기록은 이 기기에만 저장돼요.')}</p>
       </main>`;
     const form = document.getElementById('nick-form');
-    const pickedYear = () => Number((form.querySelector('input[name=year]:checked') || {}).value) || THIS_YEAR;
+    const pickedYear = () => { const v = (form.querySelector('input[name=year]:checked') || {}).value; return v === 'all' ? 'all' : Number(v) || THIS_YEAR; };
     form.querySelectorAll('input[name=year]').forEach((x) => x.addEventListener('change', () => {
-      document.getElementById('ob-mast').textContent = pickedYear();
-      document.getElementById('ob-title').textContent = tr('{y}년 공연 기록', { y: pickedYear() });
+      document.getElementById('ob-mast').textContent = obMast(pickedYear());
+      document.getElementById('ob-title').textContent = obTitle(pickedYear());
     }));
     app.querySelectorAll('[data-lang]').forEach((b) => b.addEventListener('click', () => {
       if (b.dataset.lang === I.lang) return;
@@ -295,7 +305,9 @@
     cards.push({ num: st.count, unit: tr('회'), text: tr('관람<br><b>공연 {n}개</b>', { n: st.showCount }), why: 'count' });
     if (st.venues.top.length) cards.push({ num: st.venues.max, unit: tr('회'), text: `${tr('가장 자주 간 곳')}<br><b>${esc(st.venues.top[0].name)}</b>${more(st.venues.top.length)}`, why: 'venue' });
     if (st.artists.top.length) cards.push({ num: st.artists.max, unit: tr('회'), text: `${tr('가장 많이 본 아티스트')}<br><b>${esc(st.artists.top[0].name)}</b>${more(st.artists.top.length)}`, why: 'artist' });
-    if (st.peakMonths.length) cards.push({ num: I.lang === 'en' ? I.mon(st.peakMonths[0]) : st.peakMonths[0], unit: tr('월'), text: tr('가장 많이 간 달<br><b>{n}회</b>', { n: st.monthMax }), why: 'month' });
+    if (st.peakMonths.length) cards.push(st.all
+      ? { num: st.bins[st.peakMonths[0] - 1], unit: '', text: tr('가장 많이 간 해<br><b>{n}회</b>', { n: st.monthMax }), why: 'month' }
+      : { num: I.lang === 'en' ? I.mon(st.peakMonths[0]) : st.peakMonths[0], unit: tr('월'), text: tr('가장 많이 간 달<br><b>{n}회</b>', { n: st.monthMax }), why: 'month' });
     return cards;
   }
 
@@ -345,7 +357,7 @@
     const all = state.records.slice().sort(byDate);
     const f = ledgerFilter;
     const rows = all.filter((r) => {
-      const other = !(U.isDate(r.date) && r.date.slice(0, 4) === String(year()));
+      const other = !inYear(r);
       if (f === 'all') return true;
       if (f === 'other') return other;
       return !other && r.status === f;
@@ -353,16 +365,16 @@
     const btn = (k, l) => `<button class="btn quiet" data-act="filter" data-f="${k}" aria-pressed="${f === k}">${l}</button>`;
     return `<section class="ledger" id="ledger" aria-labelledby="ledger-title">
       <div class="ledger-head"><h2 id="ledger-title">${tr('전체 기록')} <small style="font-size:var(--f-s);color:var(--muted);font-weight:500">${tr('{n}건', { n: state.records.length })}</small></h2>
-        <div class="filters">${btn('all', tr('전체'))}${btn('done', tr('관람 완료'))}${btn('planned', tr('관람 예정'))}${btn('canceled', tr('취소·환불'))}${btn('other', tr('{y}년 외', { y: year() }))}</div></div>
+        <div class="filters">${btn('all', tr('전체'))}${btn('done', tr('관람 완료'))}${btn('planned', tr('관람 예정'))}${btn('canceled', tr('취소·환불'))}${ALL() ? '' : btn('other', tr('{y}년 외', { y: year() }))}</div></div>
       ${rows.length ? `<ol>${rows.map((r) => {
-        const other = !(U.isDate(r.date) && r.date.slice(0, 4) === String(year()));
+        const other = !inYear(r);
         const st = other ? 'year' : r.status;
         return `<li><button data-act="detail" data-id="${r.id}">
           <span class="l-date">${U.dots(r.date) || tr('날짜 없음')} ${U.weekday(r.date)}</span>
           <span class="l-title">${esc(r.title)}<small>${esc((r.artists || []).join(', '))}</small></span>
           <span class="l-venue">${esc(r.venue)}</span>
           <span class="l-cost">${U.isNum(r.cost) ? U.won(r.cost) : `<span style="color:var(--muted)">${tr('금액 미입력')}</span>`}</span>
-          <span class="l-status ${st}">${other ? tr('{y}년 외', { y: year() }) : STATUS[r.status] || ''}</span>
+          <span class="l-status ${st}">${other ? (ALL() ? tr('날짜 없음') : tr('{y}년 외', { y: year() })) : STATUS[r.status] || ''}</span>
         </button></li>`;
       }).join('')}</ol>` : `<p class="help">${tr('이 조건에 맞는 기록이 없어요.')}</p>`}
     </section>`;
@@ -382,9 +394,9 @@
         </nav>
       </header>
       <section class="hero" aria-labelledby="hero-title">
-        <div class="mast26" aria-hidden="true">${year()}<i class="sq-in"></i></div>
+        <div class="mast26${ALL() ? ' wide' : ''}" aria-hidden="true">${bigYear(st)}<i class="sq-in"></i></div>
         <div class="hero-title">
-          <h1 id="hero-title">${tr('{n}의<br>{y}년 공연', { n, y: year() })}</h1>
+          <h1 id="hero-title">${tr('{n}의<br>{y}년 공연', { n, y: span(st) })}</h1>
         </div>
         <dl class="hero-stats">
           <div class="stat big"><dt>${tr('관람')}</dt><dd>${st.count}<small>${tr('회')}</small></dd></div>
@@ -393,12 +405,12 @@
           <div class="stat"><dt>${tr('아티스트')}</dt><dd>${st.artistCount}<small>${tr('팀')}</small></dd></div>
         </dl>
         <div class="hero-cta">
-          ${st.count ? `<a class="btn-solid" href="#recap">${year()} CONCERT RECAP</a>` : ''}
+          ${st.count ? `<a class="btn-solid" href="#recap">${span(st)} CONCERT RECAP</a>` : ''}
         </div>
       </section>
       ${alertsHTML(st)}
       <section aria-labelledby="g-title">
-        <div class="section-head"><h2 id="g-title">${tr('올해의 포스터')}</h2></div>
+        <div class="section-head"><h2 id="g-title">${tr(ALL() ? '지금까지의 포스터' : '올해의 포스터')}</h2></div>
         ${galleryHTML(st)}
       </section>
       ${ledgerHTML()}
@@ -422,20 +434,18 @@
 
   /* ---------- 리캡 ---------- */
   /* 달마다 그 달에 본 공연 포스터를 아래부터 쌓는다. 많으면 겹쳐 쌓는다 */
-  function peakNote(st) {
-    return st.peakMonths.length > 1 ? tr('{ms}에 {n}회씩', { ms: I.mons(st.peakMonths, ', '), n: st.monthMax }) : tr('{m}, 가장 많이 본 달', { m: I.mon(st.peakMonths[0]) });
-  }
+  function peakNote(st) { return I.peak(st, ', '); }
   function posterChartHTML(st) {
-    const byMonth = Array.from({ length: 12 }, () => []);
-    st.included.forEach((r) => byMonth[Number(r.date.slice(5, 7)) - 1].push(r));
+    const byMonth = st.bins.map(() => []);
+    st.included.forEach((r) => byMonth[st.binOf(r)].push(r));
     const peak = new Set(st.peakMonths);
     const pm = st.peakMonths[0];
     const note = peakNote(st);
-    return `<div class="pchart" id="pchart" role="group" aria-label="${tr('{y}년 월별 관람 포스터', { y: year() })}">
+    return `<div class="pchart" id="pchart" role="group" aria-label="${span(st)} ${chartName()}" style="grid-template-columns:repeat(${st.bins.length},minmax(0,1fr))">
       ${byMonth.map((list, i) => `<div class="pc-col${peak.has(i + 1) ? ' peak' : ''}" data-n="${list.length}" data-m="${i + 1}">
         ${list.map((r) => `<button class="pc-tile" data-act="detail" data-id="${r.id}" aria-label="${U.md(r.date)} ${esc(r.title)}" title="${U.md(r.date)} ${esc(r.title)}">${r.posterId ? `<img data-poster="${r.posterId}" alt="">` : '<span class="fallback"></span>'}</button>`).join('')}
         ${list.length ? `<span class="pc-cnt">${list.length}</span>` : ''}
-        <span class="pc-m">${i + 1}</span>
+        <span class="pc-m">${I.tick(st, i)}</span>
       </div>`).join('')}
       ${pm ? `<span class="pc-anno" id="pc-anno">${note}</span>` : ''}
     </div>`;
@@ -489,22 +499,23 @@
 
   function chartSVG(st) {
     const W = 720, H = 268, L = 6, Rr = 6, top = 58, base = 222;
-    const slot = (W - L - Rr) / 12;
+    const n = st.bins.length;
+    const slot = (W - L - Rr) / n;
     const bw = Math.min(24, slot * 0.4);
     const max = Math.max(1, st.monthMax);
     let g = '';
     const tops = [];
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < n; i++) {
       const c = st.months[i];
       const bh = c ? Math.max(3, (base - top) * (c / max)) : 0;
       const x = L + slot * i + (slot - bw) / 2;
       const peak = c > 0 && c === st.monthMax;
       tops.push([x + bw / 2, base - bh]);
-      g += `<g class="m" tabindex="0" role="img" aria-label="${tr('{m} {n}회', { m: I.mon(i + 1), n: c })}" data-tip="${tr('{m} {n}회', { m: I.mon(i + 1), n: c })}">
+      g += `<g class="m" tabindex="0" role="img" aria-label="${tr('{m} {n}회', { m: I.bin(st, i + 1), n: c })}" data-tip="${tr('{m} {n}회', { m: I.bin(st, i + 1), n: c })}">
         <rect class="hit" x="${(L + slot * i).toFixed(1)}" y="${top - 20}" width="${slot.toFixed(1)}" height="${base - top + 50}"></rect>
         ${bh ? `<rect class="bar-r${peak ? ' peak-bar' : ''}" x="${x.toFixed(1)}" y="${(base - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}"></rect>` : ''}
         ${c ? `<text class="cnt" x="${(x + bw / 2).toFixed(1)}" y="${(base - bh - 7).toFixed(1)}" text-anchor="middle">${c}</text>` : ''}
-        <text x="${(x + bw / 2).toFixed(1)}" y="${base + 22}" text-anchor="middle">${i + 1}</text>
+        <text x="${(x + bw / 2).toFixed(1)}" y="${base + 22}" text-anchor="middle">${I.tick(st, i)}</text>
       </g>`;
     }
     let anno = '';
@@ -516,7 +527,7 @@
       anno = `<path class="lead" d="M${px.toFixed(1)} ${(py - 24).toFixed(1)} V18 H${tx.toFixed(1)}"></path>
         <text class="anno" x="${(right ? tx + 6 : tx - 6).toFixed(1)}" y="22" text-anchor="${right ? 'start' : 'end'}">${note}</text>`;
     }
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="group" aria-label="${tr('{y}년 월별 관람 횟수', { y: year() })}">
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="group" aria-label="${span(st)} ${chartName()}">
       ${anno}${g}<line class="base" x1="0" x2="${W}" y1="${base + 0.75}" y2="${base + 0.75}"></line></svg>`;
   }
 
@@ -559,12 +570,12 @@
       </header>
       <section class="recap-head">
         <div>
-          <h1>${tr('{n}의 {y}년<br>콘서트 기록', { n, y: year() })}</h1>
+          <h1>${tr('{n}의 {y}년<br>콘서트 기록', { n, y: span(st) })}</h1>
         </div>
-        <div class="year-mark" aria-hidden="true">${yy(year())}</div>
+        <div class="year-mark${ALL() ? ' wide' : ''}" aria-hidden="true">${yy(bigYear(st))}</div>
       </section>
       ${empty ? `<div class="empty"><h2>${tr('관람 완료한 공연이 없어요')}</h2><div class="row"><button class="btn-solid" data-act="add">${tr('직접 추가')}</button></div></div>` : `
-      <section class="recap-stats" aria-label="${tr('올해의 숫자')}">
+      <section class="recap-stats" aria-label="${tr(ALL() ? '지금까지의 숫자' : '올해의 숫자')}">
         <div class="rstat"><span class="lbl">${tr('관람')}</span><span class="val">${st.count}<small>${tr('회')}</small></span><span class="sub">${tr('공연 {n}개', { n: st.showCount })}</span><button class="btn quiet why" data-act="basis" data-k="count">${tr('근거')}</button></div>
         <div class="rstat"><span class="lbl">${tr('공연장')}</span><span class="val">${st.venueCount}<small>${tr('곳')}</small></span><button class="btn quiet why" data-act="basis" data-k="venue">${tr('근거')}</button></div>
         <div class="rstat"><span class="lbl">${tr('아티스트')}</span><span class="val">${st.artistCount}<small>${tr('팀')}</small></span><button class="btn quiet why" data-act="basis" data-k="artist">${tr('근거')}</button></div>
@@ -574,14 +585,14 @@
       </section>
       <section class="chart-wrap" aria-labelledby="chart-title">
         <div>
-          <h2 id="chart-title">${tr('월별 관람')}</h2>
-          <div class="peak">${st.peakMonths[0] ? (I.lang === 'en' ? I.mon(st.peakMonths[0]) : st.peakMonths[0]) : '–'}<small>${tr('월')}</small></div>
-          <p class="chart-note">${st.peakMonths.length > 1 ? tr('{ms} {n}회씩', { ms: I.mons(st.peakMonths, ', '), n: st.monthMax }) : tr('{n}회', { n: st.monthMax })}</p>
+          <h2 id="chart-title">${chartName()}</h2>
+          <div class="peak">${!st.peakMonths[0] ? '–' : st.all ? st.bins[st.peakMonths[0] - 1] : I.lang === 'en' ? I.mon(st.peakMonths[0]) : st.peakMonths[0]}<small>${st.all ? '' : tr('월')}</small></div>
+          <p class="chart-note">${st.peakMonths.length > 1 ? tr('{ms} {n}회씩', { ms: I.bins(st, st.peakMonths, ', '), n: st.monthMax }) : tr('{n}회', { n: st.monthMax })}</p>
         </div>
         <div>
           ${chartBlock(st)}
           <div class="chart-table"><button class="btn quiet" data-act="chart-table" aria-expanded="false">${tr('표로 보기')}</button>
-            <table hidden><caption class="sr">${tr('월별 관람 횟수')}</caption><thead><tr><th>${tr('달')}</th><th>${tr('관람')}</th></tr></thead><tbody>${st.months.map((c, i) => `<tr><td>${I.mon(i + 1)}</td><td>${tr('{n}회', { n: c })}</td></tr>`).join('')}</tbody></table>
+            <table hidden><caption class="sr">${chartName()}</caption><thead><tr><th>${st.all ? tr('해') : tr('달')}</th><th>${tr('관람')}</th></tr></thead><tbody>${st.months.map((c, i) => `<tr><td>${I.bin(st, i + 1)}</td><td>${tr('{n}회', { n: c })}</td></tr>`).join('')}</tbody></table>
           </div>
         </div>
       </section>
@@ -598,13 +609,13 @@
         <ol>${st.multiDay.map((g) => `<li><span class="m-days">${g.days}<small>${tr('일')}</small></span><span class="m-title">${esc(g.title)}<small>${g.records.map((r) => U.md(r.date)).join(' · ')}${g.period ? tr(' / 기간 {a}–{b}', { a: U.md(g.period.from), b: U.md(g.period.to) }) : ''}</small></span></li>`).join('')}</ol>
       </section>` : ''}
       <section class="archive" aria-labelledby="arch-title">
-        <div class="section-head" style="padding:0"><h2 id="arch-title">${tr('올해의 포스터 {n}장', { n: st.count })}</h2></div>
+        <div class="section-head" style="padding:0"><h2 id="arch-title">${tr(ALL() ? '지금까지의 포스터 {n}장' : '올해의 포스터 {n}장', { n: st.count })}</h2></div>
         <div id="archive">${archiveHTML(st)}</div>
       </section>`}
       <details class="basis">
         <summary>${tr('계산 기준')}</summary>
         <dl>
-          <dt>${tr('관람')}</dt><dd>${tr('{y}년 관람 완료 1건 = 1회 (2매 예매도 1회, 이틀 보면 2회)', { y: year() })}</dd>
+          <dt>${tr('관람')}</dt><dd>${tr('{y}년 관람 완료 1건 = 1회 (2매 예매도 1회, 이틀 보면 2회)', { y: span(st) })}</dd>
           <dt>${tr('제외')}</dt><dd>${tr('예정 {a} · 취소 {b} · 다른 해 {c}', { a: st.excludedCount.planned || 0, b: st.excludedCount.canceled || 0, c: st.excludedCount.year || 0 })}${st.excludedCount.nodate ? tr(' · 날짜 없음 {n}', { n: st.excludedCount.nodate }) : ''}</dd>
           <dt>${tr('지출')}</dt><dd>${tr('관람 완료 기록의 본인 부담 금액 합')}${st.missingCost.length ? tr(' (미입력 {n}건 제외)', { n: st.missingCost.length }) : ''}</dd>
           <dt>${tr('중복')}</dt><dd>${st.duplicates.length ? `${tr('{n}묶음', { n: st.duplicates.length })} <button class="btn" data-act="dups">${tr('확인')}</button>` : tr('없음')}</dd>
@@ -1052,7 +1063,7 @@
   function openDetail(id) {
     const r = state.records.find((x) => x.id === id);
     if (!r) return;
-    const other = !(U.isDate(r.date) && r.date.slice(0, 4) === String(year()));
+    const other = !inYear(r);
     const key = S.showKey(r);
     const same = state.records.filter((x) => S.showKey(x) === key && x.status === 'done').sort(byDate);
     const span = r.period ? K.days(r.period.from, r.period.to, 400) : null;
@@ -1258,7 +1269,7 @@
       const b = await DB.getPoster(r.posterId);
       if (b) posters[r.posterId] = await blobToDataURL(b);
     }
-    const data = { app: 'concert-recap-2026', version: 1, exportedAt: new Date().toISOString(), nickname: state.nickname, year: year(), theme: state.theme, dupIgnore: state.dupIgnore, records: state.records, posters };
+    const data = { app: 'concert-recap-2026', version: 1, exportedAt: new Date().toISOString(), nickname: state.nickname, year: ALL() ? 'all' : year(), theme: state.theme, dupIgnore: state.dupIgnore, records: state.records, posters };
     return new File([JSON.stringify(data)], `concert-recap-backup-${U.todayStr().replace(/-/g, '')}.json`, { type: 'application/json' });
   }
   async function doBackup(share) {
@@ -1283,7 +1294,8 @@
       state.records = [];
       state.dupIgnore = data.dupIgnore || [];
       if (data.nickname) state.nickname = data.nickname;
-      if (Number(data.year) >= 2000 && Number(data.year) <= 2100) state.year = Number(data.year);
+      if (data.year === 'all') state.year = 'all';
+      else if (Number(data.year) >= 2000 && Number(data.year) <= 2100) state.year = Number(data.year);
       if (data.theme && U.isHex(data.theme.accent) && U.isHex(data.theme.bg)) state.theme = data.theme;
     }
     let added = 0, updated = 0;
@@ -1305,8 +1317,9 @@
     for (const r of state.records) if (U.isDate(r.date)) count[r.date.slice(0, 4)] = (count[r.date.slice(0, 4)] || 0) + 1;
     const ys = Object.keys(count).map(Number).filter((y) => y >= 2000 && y <= 2100);
     const hi = Math.max(THIS_YEAR + 1, year(), ...ys), lo = Math.min(2015, year(), ...ys);
-    let out = '';
-    for (let y = hi; y >= lo; y--) out += `<option value="${y}"${y === year() ? ' selected' : ''}>${y}${count[y] ? tr(' (기록 {n}건)', { n: count[y] }) : ''}</option>`;
+    const n = state.records.filter((r) => U.isDate(r.date)).length;
+    let out = `<option value="all"${ALL() ? ' selected' : ''}>${tr('전체 기간')}${n ? tr(' (기록 {n}건)', { n }) : ''}</option>`;
+    for (let y = hi; y >= lo; y--) out += `<option value="${y}"${!ALL() && y === year() ? ' selected' : ''}>${y}${count[y] ? tr(' (기록 {n}건)', { n: count[y] }) : ''}</option>`;
     return out;
   }
 
@@ -1322,7 +1335,7 @@
           <div style="display:flex;gap:12px;align-items:end"><input type="text" name="nick" value="${esc(state.nickname)}" maxlength="20" class="input" style="flex:1"><button class="btn-line" type="submit">${tr('바꾸기')}</button></div></form>
         <form id="year-edit" class="field"><span>${tr('기록할 연도')}</span>
           <div style="display:flex;gap:12px;align-items:end"><select name="year" class="input" style="flex:1" aria-label="${tr('기록할 연도')}">${yearOptions()}</select><button class="btn-line" type="submit">${tr('바꾸기')}</button></div>
-          <small>${tr('다른 해 기록은 지우지 않아요. 전체 기록의 ‘{y}년 외’에서 볼 수 있어요.', { y: year() })}</small></form>
+          <small>${tr('‘전체 기간’은 해를 가리지 않고 지금까지 본 공연을 모두 모아요.')} ${ALL() ? '' : tr('다른 해 기록은 지우지 않아요. 전체 기록의 ‘{y}년 외’에서 볼 수 있어요.', { y: year() })}</small></form>
         <div class="field"><span>${tr('리캡 색')}</span>
           <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
             <span class="color-now" aria-hidden="true"><i style="background:${state.theme.accent}"></i><i style="background:${state.theme.bg}"></i></span>
@@ -1336,8 +1349,13 @@
     d.querySelectorAll('[data-lang]').forEach((b) => b.addEventListener('click', () => { if (b.dataset.lang !== I.lang) I.setLang(b.dataset.lang); }));
     d.querySelector('#year-edit').addEventListener('submit', (e) => {
       e.preventDefault();
-      const v = Number(e.target.year.value);
-      if (!(v >= 2000 && v <= 2100) || v === year()) return;
+      const raw = e.target.year.value;
+      if (raw === 'all') {
+        if (ALL()) return;
+        state.year = 'all'; save(); d.close(); render(); toast(tr('전체 기간으로 바꿨어요')); return;
+      }
+      const v = Number(raw);
+      if (!(v >= 2000 && v <= 2100) || (!ALL() && v === year())) return;
       state.year = v; save(); d.close(); render(); toast(tr('{y}년 기록으로 바꿨어요', { y: v }));
     });
     d.querySelector('#nick-edit').addEventListener('submit', (e) => {
@@ -1484,8 +1502,8 @@
         ${k === 'venue' && st.included.some((r) => !r.venue) ? `<p class="help">${tr('공연장 미입력 {n}건 제외', { n: st.included.filter((r) => !r.venue).length })}</p>` : ''}
         ${k === 'artist' && st.included.some((r) => !(r.artists || []).length) ? `<p class="help">${tr('아티스트 미입력 {n}건 제외', { n: st.included.filter((r) => !(r.artists || []).length).length })}</p>` : ''}`;
     } else if (k === 'month') {
-      title = tr('월별 관람');
-      body = `<ul class="basis-list">${st.months.map((c, i) => `<li><span>${I.mon(i + 1)}</span><span>${st.included.filter((r) => Number(r.date.slice(5, 7)) === i + 1).map((r) => esc(r.title)).join(', ') || '–'}</span><span class="r">${tr('{n}회', { n: c })}</span></li>`).join('')}</ul>`;
+      title = chartName();
+      body = `<ul class="basis-list">${st.months.map((c, i) => `<li><span>${I.bin(st, i + 1)}</span><span>${st.included.filter((r) => st.binOf(r) === i).map((r) => esc(r.title)).join(', ') || '–'}</span><span class="r">${tr('{n}회', { n: c })}</span></li>`).join('')}</ul>`;
     }
     openDialog(`${head(title)}<div class="dlg-body">${body}</div><footer class="dlg-foot"><button class="btn-solid" data-close type="button">${tr('닫기')}</button></footer>`);
   }
@@ -1495,7 +1513,7 @@
     const st = stats();
     if (!st.count) { toast(tr('관람 완료한 공연이 있어야 이미지를 만들 수 있어요')); return; }
     const prefs = Object.assign({ format: 'story', layout: 'checker', scale: 1 }, state.exportPrefs || {});
-    const SHOW = [['spend', tr('티켓 지출')], ['counts', tr('공연장·아티스트 수')], ['bests', tr('가장 많이 본 아티스트·자주 간 공연장')], ['chart', tr('월별 관람 그래프')], ['posters', tr('공연별 포스터 장')]];
+    const SHOW = [['spend', tr('티켓 지출')], ['counts', tr('공연장·아티스트 수')], ['bests', tr('가장 많이 본 아티스트·자주 간 공연장')], ['chart', tr(ALL() ? '연도별 관람 그래프' : '월별 관람 그래프')], ['posters', tr('공연별 포스터 장')]];
     const shown = Object.assign({ spend: true, counts: true, bests: true, chart: true, posters: true }, prefs.show || {});
     const touch = window.matchMedia && matchMedia('(pointer: coarse)').matches;
     const html = `${head(tr('이미지 저장'))}
@@ -1535,14 +1553,14 @@
       state.exportPrefs = { format, layout, scale, show };
       save();
       try {
-        const pages = await R.renderAll({ format, layout, state, st, tokens, year: year(), getBlob: DB.getPoster, scale, show, chartStyle: state.chartStyle === 'bar' ? 'bar' : 'poster' });
+        const pages = await R.renderAll({ format, layout, state, st, tokens, year: ALL() ? 'all' : year(), getBlob: DB.getPoster, scale, show, chartStyle: state.chartStyle === 'bar' ? 'bar' : 'poster' });
         if (my !== job) return;
         const blobs = [];
         for (const c of pages) { blobs.push(await new Promise((res) => c.toBlob(res, 'image/png'))); c.width = 0; c.height = 0; } // 한 장씩 PNG로 바꾸고 캔버스 메모리 돌려주기
         if (my !== job) return;
         if (blobs.some((b) => !b)) throw new Error('toBlob');
         box.querySelectorAll('img').forEach((im) => URL.revokeObjectURL(im.src));
-        files = blobs.map((b, i) => new File([b], `${year()}-concert-recap-${format === 'story' ? 'story' : 'square'}-${i + 1}.png`, { type: 'image/png' }));
+        files = blobs.map((b, i) => new File([b], `${span(st)}-concert-recap-${format === 'story' ? 'story' : 'square'}-${i + 1}.png`, { type: 'image/png' }));
         const [w, h] = R.SIZES[format];
         d.querySelector('#ex-info').textContent = `${tr('{n}장', { n: files.length })} · ${w * scale}×${h * scale} · ${(blobs.reduce((s, b) => s + b.size, 0) / 1048576).toFixed(1)}MB`;
         box.innerHTML = files.map((f, i) => `<figure class="ex-page" style="margin:0"><img src="${URL.createObjectURL(f)}" alt="${tr('리캡 이미지 {n}쪽', { n: i + 1 })}"><div class="row"><span>${i + 1} / ${files.length}</span><button class="btn" type="button" data-dl="${i}">${tr('저장')}</button></div></figure>`).join('');
@@ -1561,7 +1579,7 @@
 
   /* ---------- 라우팅 ---------- */
   function render() {
-    document.title = `${state.nickname ? year() : THIS_YEAR} CONCERT RECAP`;
+    document.title = `${state.nickname ? span() : THIS_YEAR} CONCERT RECAP`;
     if (!state.nickname || location.hash === '#start') { viewOnboard(); return; }
     if (location.hash === '#recap') viewRecap();
     else viewMain();

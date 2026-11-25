@@ -401,6 +401,20 @@
     ['일정이 겹쳐 취소', 'Canceled — schedule clash', '予定が重なってキャンセル'],
     ['중복 확인 기능을 보여 주는 예시', 'Example showing the duplicate check', '重複チェック機能を見せる例'],
     ['초대권', 'Comp ticket', '招待券'],
+    // 전체 기간
+    ['전체 기간', 'All time', '全期間'],
+    ['지금까지 본 공연 기록', 'Every concert I’ve seen', 'これまでのライブ記録'],
+    ['‘전체 기간’은 해를 가리지 않고 지금까지 본 공연을 모두 모아요.', '“All time” collects every concert you’ve seen, from any year.', '「全期間」は年を問わず、これまで観た公演をすべてまとめます。'],
+    ['전체 기간으로 바꿨어요', 'Switched to all time', '全期間に切り替えました'],
+    ['연도별 관람', 'Shows by year', '年別の観覧'],
+    ['연도별 관람 그래프', 'Yearly chart', '年別グラフ'],
+    ['{m}이 가장 바빴어요|year', 'Busiest year: {m}', '{m}がいちばん忙しかった'],
+    ['{m}, 가장 많이 본 해', 'Busiest year: {m}', '{m}がいちばん多い年'],
+    ['가장 많이 간 해<br><b>{n}회</b>', 'busiest year<br><b>{n} shows</b>', 'いちばん多かった年<br><b>{n}回</b>'],
+    ['해', 'Year', '年'],
+    ['지금까지의 포스터', 'All my posters', 'これまでのポスター'],
+    ['지금까지의 숫자', 'All-time numbers', 'これまでの数字'],
+    ['지금까지의 포스터 {n}장', 'All my posters · {n}', 'これまでのポスター {n}枚'],
   ];
   const en = {}, ja = {};
   for (const [k, e, j] of T) { en[k] = e; ja[k] = j; }

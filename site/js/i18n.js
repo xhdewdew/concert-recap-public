@@ -58,8 +58,21 @@
     if (D[lang] && D[lang][r]) return D[lang][r];
     return /[가-힣]/.test(r) ? '' : r;
   }
+  // 그래프 칸 이름: 한 해 모드는 달(5월), 전체 기간은 해(2025년). k는 1부터
+  const bin = (st, k) => (st && st.all ? tr('{y}년', { y: st.bins[k - 1] }) : mon(k));
+  const bins = (st, arr, sep) => (st && st.all ? tr('{y}년', { y: arr.map((k) => st.bins[k - 1]).join(sep) }) : mons(arr, sep));
+  // 축 눈금: 1~12 / 2025 (해가 많으면 '25)
+  const tick = (st, i) => (st && st.all ? (st.bins.length > 8 ? '’' + String(st.bins[i]).slice(2) : String(st.bins[i])) : String(i + 1));
+  // 가장 많은 칸 설명 (그래프 주석)
+  function peak(st, sep, kind) {
+    if (!st.peakMonths.length) return '';
+    if (st.peakMonths.length > 1) return tr('{ms}에 {n}회씩', { ms: bins(st, st.peakMonths, sep), n: st.monthMax });
+    const m = bin(st, st.peakMonths[0]);
+    if (kind === 'busy') return st.all ? tr('{m}이 가장 바빴어요|year', { m }) : tr('{m}이 가장 바빴어요', { m });
+    return st.all ? tr('{m}, 가장 많이 본 해', { m }) : tr('{m}, 가장 많이 본 달', { m });
+  }
   const locale = () => (lang === 'en' ? 'en-US' : lang === 'ja' ? 'ja-JP' : 'ko-KR');
 
   window.CR = window.CR || {};
-  window.CR.i18n = { lang, LANGS, tr, setLang, mon, mons, wd, wdLong, reason, locale, detect };
+  window.CR.i18n = { lang, LANGS, tr, setLang, mon, mons, wd, wdLong, reason, locale, detect, bin, bins, tick, peak };
 })();

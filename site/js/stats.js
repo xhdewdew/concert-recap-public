@@ -73,7 +73,9 @@
 
   function compute(records, opts) {
     opts = opts || {};
-    const year = String(opts.year || 2026);
+    // opts.year === 'all' 이면 연도 제한 없이 전체 기간을 센다 (그래프는 달 대신 연도별)
+    const all = opts.year === 'all';
+    const year = all ? 'all' : String(opts.year || 2026);
     const today = opts.today || '';
     records = Array.isArray(records) ? records : [];
 
@@ -82,7 +84,7 @@
     for (const r of records) {
       let reason = null;
       if (!isDate(r.date)) reason = 'nodate';
-      else if (r.date.slice(0, 4) !== year) reason = 'year';
+      else if (!all && r.date.slice(0, 4) !== year) reason = 'year';
       else if (r.status === 'canceled') reason = 'canceled';
       else if (r.status === 'planned') reason = 'planned';
       if (reason) excluded.push({ record: r, reason, label: REASON[reason] });
@@ -94,15 +96,27 @@
     const missingCost = included.filter((r) => !(isNum(r.cost) && r.cost >= 0));
     const spend = withCost.reduce((s, r) => s + r.cost, 0);
 
-    const months = new Array(12).fill(0);
-    for (const r of included) months[Number(r.date.slice(5, 7)) - 1] += 1;
+    // 막대 칸: 한 해 모드는 1~12월, 전체 기간은 첫 해~마지막 해
+    let bins, binOf;
+    if (all) {
+      const ys = included.map((r) => Number(r.date.slice(0, 4)));
+      const nowY = Number((today || '').slice(0, 4)) || new Date().getFullYear();
+      const from = ys.length ? Math.min(...ys) : nowY, to = ys.length ? Math.max(...ys) : nowY;
+      bins = []; for (let y = from; y <= to; y++) bins.push(y);
+      binOf = (r) => Number(r.date.slice(0, 4)) - from;
+    } else {
+      bins = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+      binOf = (r) => Number(r.date.slice(5, 7)) - 1;
+    }
+    const months = new Array(bins.length).fill(0);
+    for (const r of included) months[binOf(r)] += 1;
     const monthMax = Math.max(0, ...months);
     const peakMonths = monthMax > 0 ? months.map((c, i) => (c === monthMax ? i + 1 : 0)).filter(Boolean) : [];
 
     const artists = tally(included, (r) => (Array.isArray(r.artists) ? r.artists : []));
     const venues = tally(included, (r) => [r.venue]);
 
-    const inYear = records.filter((r) => isDate(r.date) && r.date.slice(0, 4) === year);
+    const inYear = records.filter((r) => isDate(r.date) && (all || r.date.slice(0, 4) === year));
     const planned = inYear.filter((r) => r.status === 'planned').sort(byDate);
     const overdue = today ? planned.filter((r) => r.date < today) : [];
     const canceled = inYear.filter((r) => r.status === 'canceled').sort(byDate);
@@ -121,7 +135,12 @@
     for (const e of excluded) excludedCount[e.reason] = (excludedCount[e.reason] || 0) + 1;
 
     return {
-      year: Number(year),
+      year: all ? 'all' : Number(year),
+      all,
+      bins,
+      binOf,
+      from: all ? bins[0] : Number(year),
+      to: all ? bins[bins.length - 1] : Number(year),
       included,
       excluded,
       excludedCount,
