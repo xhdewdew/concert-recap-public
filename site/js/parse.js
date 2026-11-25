@@ -8,6 +8,12 @@
   'use strict';
 
   const pad = (n) => String(n).padStart(2, '0');
+  // 화면 언어 (테스트(Node)에서는 한국어)
+  function tr(s, v) {
+    const I = typeof window !== 'undefined' && window.CR && window.CR.i18n;
+    if (I) return I.tr(s, v);
+    return v ? s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m)) : s;
+  }
 
   const SENSITIVE = /(예매\s*번호|예약\s*번호|주문\s*번호|티켓\s*번호|좌석|구역|\d+\s*열\s*\d+|\b\d+\s*번\s*좌석|QR|바코드|입장\s*번호|정리\s*번호|휴대\s*폰|휴대전화|연락처|전화\s*번호|생년월일|이메일|e-?mail|카드\s*번호|승인\s*번호|계좌|주소)/i;
   const BOOKING_DATE = /(예매일|예매\s*일시|결제일|결제\s*일시|주문일|취소\s*가능|취소\s*마감|입금|발권|배송|수령|티켓\s*오픈|예매\s*기간|판매\s*기간)/;
@@ -116,7 +122,7 @@
       for (const l of lines) {
         if (BOOKING_DATE.test(l)) continue;
         const d = findDate(l);
-        if (d) { out.date = d; hints.push('관람일 표시를 찾지 못해 글에 있는 날짜를 넣었어요. 예매일이 아닌지 확인해 주세요.'); break; }
+        if (d) { out.date = d; hints.push(tr('관람일 표시를 찾지 못해 글에 있는 날짜를 넣었어요. 예매일이 아닌지 확인해 주세요.')); break; }
       }
     }
 
@@ -149,7 +155,7 @@
     if (out.cost == null) {
       const amts = lines.map(findAmount).filter((x) => x != null);
       if (amts.length === 1) out.cost = amts[0];
-      else if (amts.length > 1) hints.push('금액이 여러 개 보여서 비워 두었어요. 내가 낸 금액을 직접 적어 주세요.');
+      else if (amts.length > 1) hints.push(tr('금액이 여러 개 보여서 비워 두었어요. 내가 낸 금액을 직접 적어 주세요.'));
     }
 
     // 매수
@@ -157,7 +163,7 @@
     const tm = joined.match(/(\d+)\s*매/) || joined.match(/매수\s*:?\s*(\d+)/);
     if (tm) tickets = Number(tm[1]);
     if (tickets > 1 && out.cost != null) {
-      hints.push(tickets + '매 결제 금액일 수 있어요. 내가 부담한 금액으로 고쳐 주세요.');
+      hints.push(tr('{n}매 결제 금액일 수 있어요. 내가 부담한 금액으로 고쳐 주세요.', { n: tickets }));
     }
 
     // 상태
@@ -168,8 +174,8 @@
     if (out.artists.length) auto.push('artists');
     if (out.cost != null) auto.push('cost');
 
-    if (!out.title) hints.push('공연명을 찾지 못했어요.');
-    if (!out.date) hints.push('관람일을 찾지 못했어요.');
+    if (!out.title) hints.push(tr('공연명을 찾지 못했어요.'));
+    if (!out.date) hints.push(tr('관람일을 찾지 못했어요.'));
 
     return { fields: out, auto, hints, tickets, sensitiveSkipped: sensitive };
   }
@@ -194,20 +200,20 @@
   }
 
   const HEAD = {
-    title: /^(공연\s*명|공연|title|name)$/i,
-    artists: /^(아티스트|출연|출연진|artists?)$/i,
-    date: /^(관람\s*일|날짜|공연\s*일|date)$/i,
-    venue: /^(공연장|장소|venue)$/i,
-    vendor: /^(예매처|vendor|구매처)$/i,
-    cost: /^(본인\s*부담\s*금액|금액|지출|가격|cost|price)$/i,
-    status: /^(상태|관람\s*상태|status)$/i,
-    memo: /^(메모|memo|note)$/i,
-    seat: /^(좌석|seat)$/i,
+    title: /^(공연\s*명|공연|title|name|公演名)$/i,
+    artists: /^(아티스트|출연|출연진|artists?|アーティスト)$/i,
+    date: /^(관람\s*일|날짜|공연\s*일|date|観覧日)$/i,
+    venue: /^(공연장|장소|venue|会場)$/i,
+    vendor: /^(예매처|vendor|구매처|購入先)$/i,
+    cost: /^(본인\s*부담\s*금액|금액|지출|가격|cost|price|自己負担額)$/i,
+    status: /^(상태|관람\s*상태|status|状態)$/i,
+    memo: /^(메모|memo|note|メモ)$/i,
+    seat: /^(좌석|seat|座席)$/i,
   };
   const STATUS = [
-    ['done', /^(완료|관람\s*완료|봤음|done|seen)$/i],
-    ['planned', /^(예정|관람\s*예정|planned|upcoming)$/i],
-    ['canceled', /^(취소|환불|취소·환불|취소\/환불|canceled|cancelled|refunded)$/i],
+    ['done', /^(완료|관람\s*완료|봤음|done|seen|済み)$/i],
+    ['planned', /^(예정|관람\s*예정|planned|upcoming|予定)$/i],
+    ['canceled', /^(취소|환불|취소·환불|취소\/환불|canceled|cancelled|refunded|キャンセル)$/i],
   ];
 
   function vendorId(s) {
@@ -226,19 +232,19 @@
   function rowsToRecords(rows, opts) {
     opts = opts || {};
     const today = opts.today || '';
-    if (!rows.length) return { items: [], error: '빈 파일이에요.' };
+    if (!rows.length) return { items: [], error: tr('빈 파일이에요.') };
     const head = rows[0].map((h) => String(h).trim());
     const idx = {};
     head.forEach((h, i) => { for (const k in HEAD) if (HEAD[k].test(h) && idx[k] == null) idx[k] = i; });
     if (idx.title == null || idx.date == null) {
-      return { items: [], error: '첫 줄에 "공연명"과 "관람일" 제목 칸이 필요해요. 예시 CSV를 내려받아 형식을 맞춰 주세요.' };
+      return { items: [], error: tr('첫 줄에 "공연명"과 "관람일" 제목 칸이 필요해요. 예시 CSV를 내려받아 형식을 맞춰 주세요.') };
     }
     const items = rows.slice(1).map((r, n) => {
       const get = (k) => (idx[k] == null ? '' : String(r[idx[k]] || '').trim());
       const errors = [];
       const date = normalizeDateCell(get('date'));
-      if (!get('title')) errors.push('공연명 없음');
-      if (!date) errors.push('관람일 형식 확인 (예: 2026-03-14)');
+      if (!get('title')) errors.push(tr('공연명 없음'));
+      if (!date) errors.push(tr('관람일 형식 확인 (예: 2026-03-14)'));
       const costRaw = get('cost').replace(/[^\d.]/g, '');
       const cost = costRaw === '' ? null : Number(costRaw);
       let status = '';

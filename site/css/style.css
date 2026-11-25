@@ -405,7 +405,9 @@ dialog.dlg::backdrop { background: rgb(10 10 14 / 0.5); }
 @media (max-width: 699px) {
   :root { --f-xl: 24px; --f-2xl: 32px; }
   .bar { padding-top: calc(14px + env(safe-area-inset-top)); align-items: flex-start; }
-  .bar nav { gap: 6px 14px; }
+  .bar nav { gap: 6px 10px; }
+  .bar { gap: 10px; }
+  .bar .btn-solid.sm { padding: 7px 10px; }
   .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mast26 { font-size: 30vw; }
   .year-mark { font-size: 44vw; }
@@ -522,3 +524,55 @@ details.basis dl { margin-top: 8px; }
 .pick-note { margin: 0; padding: 10px 12px; font-size: var(--f-xs); color: var(--muted); border-bottom: 1px solid var(--rule); }
 .pick-add { appearance: none; border: 0; background: none; text-align: left; padding: 11px 12px; font-size: var(--f-xs); color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
 #chips:empty, #venue-picked:empty { display: none; }
+
+/* 앱 안 브라우저 안내 */
+.inapp { border: 2px solid var(--ink); background: var(--bg); padding: 14px 16px; display: grid; gap: 8px; font-size: var(--f-s); line-height: 1.5; color: var(--ink); }
+.inapp p { margin: 0; color: var(--ink); }
+.inapp .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+.inapp .btn-solid, .inapp .btn-line { text-decoration: none; }
+.inapp.compact { padding: 12px 14px; }
+.alerts .inapp { margin: 0 0 12px; }
+
+/* 위쪽 줄의 작은 강조 버튼 (직접 추가) */
+.btn-solid.sm { font-size: var(--f-s); padding: 7px 12px; letter-spacing: 0; }
+.bar nav { align-items: center; }
+@media (max-width: 380px) {
+  .bar, .bar nav { column-gap: 8px; }
+  .bar .btn, .bar .btn-solid.sm { font-size: 13px; }
+  .bar .btn-solid.sm { padding: 6px 8px; }
+}
+
+/* 메인 아래 고정 버튼 (직접 추가·캡처로 추가) */
+.has-dock .page { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+.has-dock #toast { bottom: calc(96px + env(safe-area-inset-bottom)); }
+/* 백업 단계 안내 */
+.steps { margin: 2px 0 6px; padding-left: 20px; display: grid; gap: 4px; font-size: var(--f-s); line-height: 1.5; color: var(--ink); }
+.steps b { font-weight: 700; }
+.dlg-body section.field { display: grid; gap: 8px; border-top: 1px solid var(--rule); padding-top: 16px; }
+.dlg-body section.field > span { font-weight: 700; color: var(--ink); }
+/* 설정: 지금 색 */
+.color-now { display: inline-flex; border: 1.5px solid var(--ink); }
+.color-now i { width: 34px; height: 34px; display: block; }
+/* 색 고르기: 큰 칸을 누르면 폰의 색상 팔레트가 열린다 */
+.pick-tap { position: relative; display: flex; align-items: center; gap: 12px; border: 1.5px solid var(--ink); padding: 10px 12px; cursor: pointer; min-height: 56px; }
+.pick-tap input[type=color] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.01; border: 0; padding: 0; cursor: pointer; }
+.pick-tap .sw { width: 34px; height: 34px; border: 1px solid var(--rule); flex: none; }
+.pick-tap b { font-size: 18px; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.pick-tap em { margin-left: auto; font-style: normal; font-size: var(--f-xs); color: var(--muted); }
+.picker .hx-row { display: flex; gap: 10px; align-items: center; }
+.picker .hx-row small { font-size: var(--f-xs); color: var(--muted); white-space: nowrap; }
+.picker .hx-row input[type=text] { font-size: 16px; padding: 6px 0; }
+/* 이미지 저장: 보여줄 내용 */
+.ex-show { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+.ex-show label { display: flex; gap: 8px; align-items: center; font-size: var(--f-s); }
+.ex-show input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+
+/* 언어 고르기 (시작 화면 · 설정) */
+.lang-pick { display: flex; gap: 6px 16px; flex-wrap: wrap; }
+.lang-pick .btn { padding-left: 0; padding-right: 0; }
+.lang-pick .btn[aria-pressed="true"] { color: var(--ink); font-weight: 700; border-bottom: 2px solid currentColor; }
+.onboard .lang-pick { margin-bottom: 18px; }
+/* 일본어: 가나·한자는 일본어 글꼴로 */
+:root:lang(ja) { --font: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", Meiryo, "Apple SD Gothic Neo", sans-serif; }
+/* 일본어는 띄어쓰기가 없어서 글자 단위로 줄을 바꾼다 */
+:root:lang(ja) body { word-break: normal; line-break: strict; }

@@ -116,7 +116,8 @@
   const LIMIT_KEY = 'concert-recap-kopis-limit';
   const HEALTH_KEY = 'concert-recap-kopis-on';
   const TTL = 12 * 3600 * 1000;
-  const LIMIT_MSG = '오늘 자동 불러오기 사용량이 다 찼어요. 오전 9시에 다시 열려요. 직접 입력은 지금도 돼요.';
+  const tr = (s) => (typeof window !== 'undefined' && window.CR && window.CR.i18n ? window.CR.i18n.tr(s) : s);
+  const LIMIT_MSG = tr('오늘 자동 불러오기 사용량이 다 찼어요. 오전 9시에 다시 열려요. 직접 입력은 지금도 돼요.');
   const ls = {
     get(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 저장 공간 없음 */ } },
@@ -191,7 +192,7 @@
     const e = new Error(reason || ('서버 응답 ' + r.status)); e.reason = reason || ('서버 응답 ' + r.status);
     return e;
   }
-  const why = (e) => (e && e.reason) || (e && e.name === 'AbortError' ? '응답 시간 초과' : '');
+  const why = (e) => (e && e.reason) || (e && e.name === 'AbortError' ? tr('응답 시간 초과') : '');
   /* 목록 미리보기 포스터: 보는 사람 폰이 KOPIS에서 바로 받는다(서버 호출 없음). 안 되면 서버로 */
   const posterSrc = (url) => String(url || '').replace(/^http:\/\//, 'https://');
   const posterFallback = (url) => '/api/kopis?poster=' + encodeURIComponent(url);
@@ -225,7 +226,7 @@
   async function json(params) {
     try { return await getJSON(params); } catch (e) {
       if (e.reason) throw e;
-      const x = new Error('kopis'); x.reason = why(e) || '사이트 서버에 연결하지 못했어요'; throw x;
+      const x = new Error('kopis'); x.reason = why(e) || tr('사이트 서버에 연결하지 못했어요'); throw x;
     }
   }
   const venueSearch = (q) => json({ venue: q }).then((j) => j.results || []);

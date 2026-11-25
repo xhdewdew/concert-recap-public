@@ -4,7 +4,10 @@
 (function () {
   'use strict';
   const U = window.CR.util;
-  const FONT = '"Pretendard Variable", Pretendard, "Apple SD Gothic Neo", Inter, "Noto Sans KR", "Noto Sans CJK KR", sans-serif';
+  const I = window.CR.i18n, tr = I.tr;
+  // 일본어는 가나·한자를 일본어 글꼴로 먼저 그린다 (Pretendard에 없는 글자)
+  const JP = I.lang === 'ja' ? '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Noto Sans CJK JP", "Yu Gothic", Meiryo, ' : '';
+  const FONT = `"Pretendard Variable", Pretendard, ${JP}"Apple SD Gothic Neo", Inter, "Noto Sans KR", "Noto Sans CJK KR", sans-serif`;
   const SIZES = { story: [1080, 1920], square: [1080, 1080] };
   const PER_PAGE = { story: { checker: 10, grid: 12 }, square: { checker: 6, grid: 12 } };
   const GRID = { story: { checker: [4, 5], grid: [3, 4] }, square: { checker: [4, 3], grid: [4, 3] } };
@@ -171,7 +174,7 @@
           ctx.fillText(String(list.length), cx, top - lbl * 0.45);
         }
         font(ctx, peak ? 700 : 400, lbl); ctx.fillStyle = peak ? t.accentText : t.muted; ctx.textAlign = 'center';
-        ctx.fillText(rows > 1 ? (i + 1) + '월' : String(i + 1), cx, base + lbl * 1.35);
+        ctx.fillText(rows > 1 ? I.mon(i + 1) : String(i + 1), cx, base + lbl * 1.35);
         tops.push([cx, top - lbl * 1.4]);
       }
     }
@@ -258,21 +261,22 @@
     const tw = W * 0.5 - M;
     let ts = 54;
     font(ctx, 800, ts);
-    const fixed = [Y + '년', '콘서트 기록'];
-    while (ts > 34 && (fixed.some((l) => ctx.measureText(l).width > tw) || ctx.measureText(nick + '의').width > tw * 2)) { ts -= 2; font(ctx, 800, ts); }
-    const titleLines = wrap(ctx, nick + '의', tw, 3).concat(fixed);
+    const fixed = [tr('{y}년', { y: Y }), tr('콘서트 기록')];
+    const nl = tr('{n}의', { n: nick });
+    while (ts > 34 && (fixed.some((l) => ctx.measureText(l).width > tw) || ctx.measureText(nl).width > tw * 2)) { ts -= 2; font(ctx, 800, ts); }
+    const titleLines = wrap(ctx, nl, tw, 3).concat(fixed);
     ctx.fillStyle = t.ink;
     let ty = y + ts;
     for (const l of titleLines) { ctx.fillText(fit(ctx, l, tw), M, ty); ty += ts * 1.12; }
     const rx = W * 0.54;
-    label(ctx, t, '관람', rx, y + 10, 'left', 26);
+    label(ctx, t, tr('관람'), rx, y + 10, 'left', 26);
     let cs = 220;
     font(ctx, 800, cs);
     while (cs > 110 && rx + measureTracked(ctx, String(st.count), -cs * 0.06) + 80 > W - M) { cs -= 10; font(ctx, 800, cs); }
     ctx.fillStyle = t.ink;
     const cw = tracked(ctx, String(st.count), rx - 6, y + 10 + cs * 0.86, -cs * 0.06);
     font(ctx, 700, 58);
-    ctx.fillText('회', rx - 6 + cw + 10, y + 10 + cs * 0.86);
+    ctx.fillText(tr('회'), rx - 6 + cw + 10, y + 10 + cs * 0.86);
     y = Math.max(ty - ts * 1.12, y + 10 + cs * 0.86) + 110;
 
     // 보여줄 내용 (이미지 저장 창에서 고름)
@@ -287,7 +291,7 @@
       ctx.fillStyle = t.rule; ctx.fillRect(M, y - 50, W - M * 2, 2);
       if (sh.spend) {
         const spendW = sh.counts ? inner * 0.5 - 44 : inner;
-        label(ctx, t, '티켓 지출', M, y, 'left', 26);
+        label(ctx, t, tr('티켓 지출'), M, y, 'left', 26);
         let ss = sh.counts ? 92 : 120;
         const spend = U.won(st.spend);
         font(ctx, 800, ss);
@@ -296,7 +300,7 @@
         tracked(ctx, spend, M - 3, y + 100, -ss * 0.05);
       }
       if (sh.counts) {
-        [['공연장', st.venueCount, '곳'], ['아티스트', st.artistCount, '팀']].forEach(([lb, v, unit], i) => {
+        [[tr('공연장'), st.venueCount, tr('곳')], [tr('아티스트'), st.artistCount, tr('팀')]].forEach(([lb, v, unit], i) => {
           const x = sh.spend ? M + inner * 0.5 + (inner * 0.25) * i : M + (inner * 0.5) * i;
           label(ctx, t, lb, x, y, 'left', 26);
           font(ctx, 800, 100); ctx.fillStyle = t.ink;
@@ -311,14 +315,14 @@
     if (sh.bests) {
     ctx.fillStyle = t.rule; ctx.fillRect(M, y - 50, W - M * 2, 2);
     const half = inner / 2;
-    [['가장 많이 본 아티스트', st.artists, '팀'], ['가장 자주 간 공연장', st.venues, '곳']].forEach(([lb, list, unitWord], i) => {
+    BESTS(st).forEach(([lb, list, tieKey], i) => {
       const x = M + half * i, w = half - 28;
       label(ctx, t, lb, x, y, 'left', 24);
       font(ctx, 800, 44); ctx.fillStyle = t.ink;
-      ctx.fillText(list.top.length ? fit(ctx, list.top[0].name, w) : '기록 없음', x, y + 58);
+      ctx.fillText(list.top.length ? fit(ctx, list.top[0].name, w) : tr('기록 없음'), x, y + 58);
       if (list.top.length) {
         font(ctx, 600, 26); ctx.fillStyle = t.muted;
-        ctx.fillText(`${list.max}회${list.top.length > 1 ? ` · 공동 ${list.top.length}${unitWord}` : ''}`, x, y + 98);
+        ctx.fillText(tr('{n}회', { n: list.max }) + (list.top.length > 1 ? ' · ' + tr(tieKey, { n: list.top.length }) : ''), x, y + 98);
       }
     });
     y += 196; // 아래 가로선과 위 칸들 사이 간격을 맞춤 (글자 아래 약 54px)
@@ -333,7 +337,7 @@
     const tops = opts.chartStyle === 'bar' ? chart(ctx, t, st, M, chTop + 40, W - M * 2, chH - 40, { label: 22 }).map(([a, b]) => [a, b - 34])
       : posterChart(ctx, t, st, M, chTop, W - M * 2, chH, { label: 22, rows, items: opts.items, imgs: opts.imgs });
     annotate(ctx, t, st, tops, W, M, 24);
-    label(ctx, t, '월별 관람', M, y, 'left', 24); // 그래프 높이와 상관없이 가로선 바로 아래에 고정
+    label(ctx, t, tr('월별 관람'), M, y, 'left', 24); // 그래프 높이와 상관없이 가로선 바로 아래에 고정
     footer(ctx, t, W, H, M, pageNo, total);
   }
 
@@ -353,8 +357,10 @@
     // 제목
     const tx = W * 0.62, tw = W - M - tx;
     let ts = 40; font(ctx, 800, ts);
-    while (ts > 26 && ([Y + '년', '콘서트 기록'].some((l) => ctx.measureText(l).width > tw) || ctx.measureText(nick + '의').width > tw * 2)) { ts -= 2; font(ctx, 800, ts); }
-    const tl = wrap(ctx, nick + '의', tw, 3).concat([Y + '년', '콘서트 기록']);
+    const fixed = [tr('{y}년', { y: Y }), tr('콘서트 기록')];
+    const nl = tr('{n}의', { n: nick });
+    while (ts > 26 && (fixed.some((l) => ctx.measureText(l).width > tw) || ctx.measureText(nl).width > tw * 2)) { ts -= 2; font(ctx, 800, ts); }
+    const tl = wrap(ctx, nl, tw, 3).concat(fixed);
     ctx.fillStyle = t.ink;
     let ty = base - (tl.length - 1) * ts * 1.14;
     for (const l of tl) { ctx.fillText(fit(ctx, l, tw), tx, ty); ty += ts * 1.14; }
@@ -366,7 +372,7 @@
     if (!sh.chart) { const shift = (H - M - 80) - (y + rowsH - 40); if (shift > 0) y += shift; }
     ctx.fillStyle = t.rule; ctx.fillRect(M, y - 34, W - M * 2, 2);
     const cw = (W - M * 2) / 4;
-    const cells = [['관람', String(st.count), '회']].concat(sh.counts ? [['공연장', String(st.venueCount), '곳'], ['아티스트', String(st.artistCount), '팀']] : []);
+    const cells = [[tr('관람'), String(st.count), tr('회')]].concat(sh.counts ? [[tr('공연장'), String(st.venueCount), tr('곳')], [tr('아티스트'), String(st.artistCount), tr('팀')]] : []);
     cells.forEach(([lb, v, u], i) => {
       const x = M + cw * i;
       label(ctx, t, lb, x, y, 'left', 20);
@@ -376,7 +382,7 @@
     });
     if (sh.spend) {
       const sx = M + cw * cells.length, sw = W - M - sx;
-      label(ctx, t, '티켓 지출', sx, y, 'left', 20);
+      label(ctx, t, tr('티켓 지출'), sx, y, 'left', 20);
       let ss = cells.length > 1 ? 50 : 80; font(ctx, 800, ss); ctx.fillStyle = t.ink;
       const sp = U.won(st.spend);
       while (ss > 26 && ctx.measureText(sp).width > sw) { ss -= 2; font(ctx, 800, ss); }
@@ -385,19 +391,19 @@
     y += 150;
 
     // 베스트 2칸
-    if (sh.bests) [['가장 많이 본 아티스트', st.artists, '팀'], ['가장 자주 간 공연장', st.venues, '곳']].forEach(([lb, list, unitWord], i) => {
+    if (sh.bests) BESTS(st).forEach(([lb, list, tieKey], i) => {
       const x = M + ((W - M * 2) / 2 + 12) * i, w = (W - M * 2) / 2 - 12;
       label(ctx, t, lb, x, y, 'left', 20);
       font(ctx, 800, 34); ctx.fillStyle = t.ink;
-      ctx.fillText(fit(ctx, list.top.length ? list.top[0].name : '기록 없음', w), x, y + 44);
+      ctx.fillText(fit(ctx, list.top.length ? list.top[0].name : tr('기록 없음'), w), x, y + 44);
       if (list.top.length) {
         font(ctx, 500, 22); ctx.fillStyle = t.muted;
-        ctx.fillText(`${list.max}회${list.top.length > 1 ? ` · 공동 ${list.top.length}${unitWord}` : ''}`, x, y + 76);
+        ctx.fillText(tr('{n}회', { n: list.max }) + (list.top.length > 1 ? ' · ' + tr(tieKey, { n: list.top.length }) : ''), x, y + 76);
       }
     });
     if (sh.bests) y += 120;
     if (!sh.chart) { footer(ctx, t, W, H, M, pageNo, total); square(ctx, t, W - M - 22, base - 4, 22); return; }
-    label(ctx, t, '월별 관람', M, y, 'left', 20);
+    label(ctx, t, tr('월별 관람'), M, y, 'left', 20);
     const top0 = y + 10;
     const h = H - M - 56 - top0;
     const tops = opts.chartStyle === 'bar' ? chart(ctx, t, st, M, top0 + 30, W - M * 2, h - 30, { label: 20, barRatio: 0.34 }).map(([a, b]) => [a, b - 30])
@@ -407,6 +413,8 @@
     square(ctx, t, W - M - 22, base - 4, 22);
   }
 
+  // 베스트 두 칸: [이름표, 목록, 공동 n팀/곳 문구]
+  const BESTS = (st) => [[tr('가장 많이 본 아티스트'), st.artists, '공동 {n}팀'], [tr('가장 자주 간 공연장'), st.venues, '공동 {n}곳']];
   // 보여줄 내용: 기본은 모두 보이기
   function show(opts) { return Object.assign({ spend: true, counts: true, bests: true, chart: true, posters: true }, (opts && opts.show) || {}); }
 
@@ -414,7 +422,7 @@
     if (!st.peakMonths.length) return;
     const pm = st.peakMonths[0];
     const [px, py] = tops[pm - 1];
-    const note = st.peakMonths.length > 1 ? `${st.peakMonths.join('·')}월에 ${st.monthMax}회씩` : `${pm}월이 가장 바빴어요`;
+    const note = st.peakMonths.length > 1 ? tr('{ms}에 {n}회씩', { ms: I.mons(st.peakMonths, '·'), n: st.monthMax }) : tr('{m}이 가장 바빴어요', { m: I.mon(pm) });
     font(ctx, 600, size);
     const nw = ctx.measureText(note).width;
     const right = px + 26 + nw < W - M;
@@ -439,7 +447,7 @@
     const { format, layout, nick, pageNo, total, startNo, countAll } = opts;
     const M = format === 'story' ? 64 : 56;
     label(ctx, t, nick, M, M + 20, 'left', format === 'story' ? 26 : 22);
-    label(ctx, t, `공연 포스터 ${startNo}–${startNo + items.length - 1} / ${countAll}`, W - M, M + 20, 'right', format === 'story' ? 26 : 22);
+    label(ctx, t, `${tr('공연 포스터')} ${startNo}–${startNo + items.length - 1} / ${countAll}`, W - M, M + 20, 'right', format === 'story' ? 26 : 22);
     const top = M + (format === 'story' ? 74 : 56);
     const bottom = H - M - 44;
     const [cols, rows] = GRID[format][layout];
@@ -493,7 +501,7 @@
     while (ds > 40 && measureTracked(ctx, U.md(r.date), -ds * 0.05) > inner) { ds -= 2; font(ctx, 400, ds); }
     tracked(ctx, U.md(r.date), x + p - 3, y + p + 26 + ds * 0.86, -ds * 0.05);
     font(ctx, 400, 24);
-    ctx.fillText(U.weekday(r.date) + '요일', x + p, y + p + 26 + ds * 0.86 + 40);
+    ctx.fillText(U.weekdayLong(r.date), x + p, y + p + 26 + ds * 0.86 + 40);
     const ts = format === 'story' ? 25 : 22;
     font(ctx, 700, ts); ctx.fillStyle = t.ink;
     const lines = wrap(ctx, r.title, inner, 3);
@@ -513,13 +521,14 @@
     const { format, layout, state, st, tokens, getBlob, scale } = opts;
     const [W, H] = SIZES[format];
     const sc = scale || 1;
-    const nick = (state.nickname || '나').trim();
+    const nick = (state.nickname || tr('나')).trim();
     const items = st.included.slice();
     const per = PER_PAGE[format][layout];
     const sh = show(opts);
     const total = 1 + (sh.posters ? Math.ceil(items.length / per) : 0);
     const Y = String(opts.year || 2026);
-    const texts = [nick, Y + ' 0123456789', '의 년 콘서트 기록 관람 티켓 지출 공연장 아티스트 가장 많이 본 자주 간 월별 관람 완료 기준 공연 포스터 요일 기록 없음 이 바빴어요 회씩 외 공동 올해 번 에 갔어요 에서 을 봤고 썼어요 곳 concert recap',
+    const texts = [nick, Y + ' 0123456789', 'concert recap', ...['{n}의', '{y}년', '콘서트 기록', '관람', '회', '곳', '팀', '티켓 지출', '공연장', '아티스트', '가장 많이 본 아티스트', '가장 자주 간 공연장',
+      '월별 관람', '기록 없음', '공연 포스터', '{m}이 가장 바빴어요', '{ms}에 {n}회씩', '{n}회', '공동 {n}팀', '공동 {n}곳'].map((k) => tr(k)), ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(I.mon), ...[0, 1, 2, 3, 4, 5, 6].map(I.wdLong),
       ...items.map((r) => r.title + r.venue + (r.artists || []).join(''))];
     await ensureFonts(texts);
 

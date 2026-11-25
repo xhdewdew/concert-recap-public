@@ -17,7 +17,9 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ESC[c]);
 
   const isNum = (n) => typeof n === 'number' && isFinite(n);
-  const won = (n) => (isNum(n) ? '₩' + Math.round(n).toLocaleString('ko-KR') : '미입력');
+  // 화면 언어 (브라우저에서만; 테스트(Node)에서는 한국어)
+  const I = () => (typeof window !== 'undefined' && window.CR && window.CR.i18n) || null;
+  const won = (n) => (isNum(n) ? '₩' + Math.round(n).toLocaleString('ko-KR') : (I() ? I().tr('미입력') : '미입력'));
   const comma = (n) => Math.round(n).toLocaleString('ko-KR');
 
   function todayStr(d) {
@@ -33,7 +35,15 @@
   function weekday(s) {
     if (!isDate(s)) return '';
     const [y, m, d] = s.split('-').map(Number);
-    return '일월화수목금토'[new Date(y, m - 1, d).getDay()];
+    const i = new Date(y, m - 1, d).getDay();
+    return I() ? I().wd(i) : '일월화수목금토'[i];
+  }
+  // 긴 요일: 일요일 / Sunday / 日曜日
+  function weekdayLong(s) {
+    if (!isDate(s)) return '';
+    const [y, m, d] = s.split('-').map(Number);
+    const i = new Date(y, m - 1, d).getDay();
+    return I() ? I().wdLong(i) : '일월화수목금토'[i] + '요일';
   }
   const md = (s) => (s ? s.slice(5, 7) + '.' + s.slice(8, 10) : '');
   const dots = (s) => (s ? s.replace(/-/g, '.') : '');
@@ -102,6 +112,6 @@
     return function () { clearTimeout(t); const a = arguments; t = setTimeout(() => fn.apply(null, a), ms); };
   }
 
-  return { uid, esc, isNum, won, comma, todayStr, isDate, weekday, md, dots, pad,
+  return { uid, esc, isNum, won, comma, todayStr, isDate, weekday, weekdayLong, md, dots, pad,
     isHex, normHex, hexToRgb, rgbToHex, lum, contrast, mix, ensureContrast, hash, rng, debounce };
 });

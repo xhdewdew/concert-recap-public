@@ -102,7 +102,7 @@
       const ty = today ? today.slice(0, 4) : Y;
       const status = status0 === 'canceled' ? status0 : Y < ty ? 'done' : Y === ty ? (date > today ? 'planned' : 'done') : status0;
       out.push({
-        id: U.uid(), title, artists, date, venue, vendor, vendorOther: '', cost, status, memo,
+        id: U.uid(), title, artists, date, venue, vendor, vendorOther: '', cost, status, memo: memo && window.CR.i18n ? window.CR.i18n.tr(memo) : memo,
         shape, posterId: null, posterRatio: null, source: 'sample', createdAt: now + i, updatedAt: now + i,
       });
     }
