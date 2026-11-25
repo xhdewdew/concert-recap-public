@@ -563,9 +563,20 @@ details.basis dl { margin-top: 8px; }
 .picker .hx-row small { font-size: var(--f-xs); color: var(--muted); white-space: nowrap; }
 .picker .hx-row input[type=text] { font-size: 16px; padding: 6px 0; }
 /* 이미지 저장: 보여줄 내용 */
-.ex-show { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
-.ex-show label { display: flex; gap: 8px; align-items: center; font-size: var(--f-s); }
-.ex-show input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+/* 이미지에 넣을 내용 고르기: 눌러서 켜고 끄는 칸 */
+.ex-show { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 8px; margin-top: 10px; }
+.ex-show.solo { grid-template-columns: minmax(0, 340px); margin-top: 0; }
+.tgl { position: relative; display: flex; align-items: center; gap: 12px; min-height: 50px; padding: 10px 14px;
+  border: 1.5px solid var(--muted); color: var(--muted); font-size: var(--f-s); font-weight: 600; line-height: 1.35; cursor: pointer;
+  transition: border-color .15s, color .15s; }
+.tgl input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.tgl i { flex: none; display: grid; place-items: center; width: 20px; height: 20px; border: 1.5px solid currentColor; }
+.tgl small { display: block; font-weight: 400; color: var(--muted); }
+.tgl:has(input:checked) { border-color: var(--ink); color: var(--ink); }
+.tgl:has(input:checked) i { background: var(--ink); border-color: var(--ink); }
+.tgl:has(input:checked) i::after { content: ""; width: 5px; height: 10px; border: solid var(--bg); border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); }
+.tgl:has(input:focus-visible) { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+@media (hover: hover) { .tgl:hover { border-color: var(--ink); } }
 
 /* 언어 고르기 (시작 화면 · 설정) */
 .lang-pick { display: flex; gap: 6px 16px; flex-wrap: wrap; }

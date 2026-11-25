@@ -358,6 +358,7 @@
     ['보여줄 내용', 'What to show', '表示する内容'],
     ['(관람 횟수는 늘 들어가요)', '(show count is always included)', '（観覧回数は必ず入ります）'],
     ['2배 해상도', '2× resolution', '2倍の解像度'],
+    ['(더 선명, 파일이 커져요)', '(sharper, larger files)', '（より鮮明・ファイルが大きくなります）'],
     ['이미지를 만드는 중이에요…', 'Making images…', '画像を作成中…'],
     ['이미지 모두 저장', 'Save all images', '画像をすべて保存'],
     ['미리보기 이미지를 길게 누르면 사진 앱에 저장돼요.', 'Long-press a preview image to save it to Photos.', 'プレビュー画像を長押しすると写真アプリに保存できます。'],

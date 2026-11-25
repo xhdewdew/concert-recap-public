@@ -1508,8 +1508,8 @@
             <div class="seg" style="grid-template-columns:1fr 1fr"><label><input type="radio" name="layout" value="checker"${prefs.layout === 'checker' ? ' checked' : ''}>${tr('날짜와 번갈아')}</label><label><input type="radio" name="layout" value="grid"${prefs.layout === 'grid' ? ' checked' : ''}>${tr('촘촘하게')}</label></div></fieldset>
         </div>
         <fieldset class="field" style="border:0;margin:0;padding:0"><legend>${tr('보여줄 내용')} <small style="font-weight:400;color:var(--muted)">${tr('(관람 횟수는 늘 들어가요)')}</small></legend>
-          <div class="ex-show">${SHOW.map(([k, lb]) => `<label><input type="checkbox" name="show" value="${k}"${shown[k] ? ' checked' : ''}>${lb}</label>`).join('')}</div></fieldset>
-        <label style="display:flex;gap:10px;align-items:center;font-size:var(--f-s)"><input type="checkbox" id="hi" ${prefs.scale === 2 ? 'checked' : ''} style="width:20px;height:20px;accent-color:var(--accent)"> ${tr('2배 해상도')}</label>
+          <div class="ex-show">${SHOW.map(([k, lb]) => `<label class="tgl"><input type="checkbox" name="show" value="${k}"${shown[k] ? ' checked' : ''}><i aria-hidden="true"></i><span>${lb}</span></label>`).join('')}</div></fieldset>
+        <div class="ex-show solo"><label class="tgl"><input type="checkbox" id="hi" ${prefs.scale === 2 ? 'checked' : ''}><i aria-hidden="true"></i><span>${tr('2배 해상도')} <small>${tr('(더 선명, 파일이 커져요)')}</small></span></label></div>
         <p class="help" id="ex-info" style="margin:0"></p>
         <div id="ex-pages" class="ex-pages"><p class="ex-loading">${tr('이미지를 만드는 중이에요…')}</p></div>
         <div class="share-box">
