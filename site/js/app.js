@@ -1512,8 +1512,11 @@
       try {
         const pages = await R.renderAll({ format, layout, state, st, tokens, year: year(), getBlob: DB.getPoster, scale, show, chartStyle: state.chartStyle === 'bar' ? 'bar' : 'poster' });
         if (my !== job) return;
-        const blobs = await Promise.all(pages.map((c) => new Promise((res) => c.toBlob(res, 'image/png'))));
+        const blobs = [];
+        for (const c of pages) { blobs.push(await new Promise((res) => c.toBlob(res, 'image/png'))); c.width = 0; c.height = 0; } // 한 장씩 PNG로 바꾸고 캔버스 메모리 돌려주기
         if (my !== job) return;
+        if (blobs.some((b) => !b)) throw new Error('toBlob');
+        box.querySelectorAll('img').forEach((im) => URL.revokeObjectURL(im.src));
         files = blobs.map((b, i) => new File([b], `${year()}-concert-recap-${format === 'story' ? 'story' : 'square'}-${i + 1}.png`, { type: 'image/png' }));
         const [w, h] = R.SIZES[format];
         d.querySelector('#ex-info').textContent = `${files.length}장 · ${w * scale}×${h * scale} · ${(blobs.reduce((s, b) => s + b.size, 0) / 1048576).toFixed(1)}MB`;

@@ -179,18 +179,52 @@
     return tops;
   }
 
+  /* 포스터 불러오기
+     - 폰 메모리를 아끼려고 그릴 크기(긴 변 900px)로 줄여서 작은 캔버스로 바꿔 둔다.
+       (원본 그대로 여러 장을 한꺼번에 풀면 아이폰에서 메모리가 모자라 포스터가 빈칸으로 나왔다)
+     - <img>로 안 되면 createImageBitmap으로 한 번 더 시도한다. */
+  const MAX_SIDE = 900;
+  // 화면에 포스터를 보여 줄 때와 같은 방법(<img>)을 먼저 쓴다.
+  // 일부 사파리는 createImageBitmap이 오류 없이 빈 그림을 돌려줘서 포스터가 빈칸으로 나왔다.
+  async function decode(blob) {
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = new Image();
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+      if (img.naturalWidth) return { src: img, url };
+    } catch (e) { /* 아래 방법으로 */ }
+    URL.revokeObjectURL(url);
+    return { src: await createImageBitmap(blob) };
+  }
   async function loadImage(getBlob, id) {
     if (!id) return null;
+    let d = null;
     try {
       const blob = await getBlob(id);
       if (!blob) return null;
-      if (window.createImageBitmap) return await createImageBitmap(blob);
-      const url = URL.createObjectURL(blob);
-      const img = new Image();
-      img.src = url;
-      await img.decode();
-      return img;
-    } catch (e) { return null; }
+      d = await decode(blob);
+      const w = d.src.naturalWidth || d.src.width, h = d.src.naturalHeight || d.src.height;
+      if (!w || !h) return null;
+      const s = Math.min(1, MAX_SIDE / Math.max(w, h));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(w * s)); c.height = Math.max(1, Math.round(h * s));
+      const x = c.getContext('2d');
+      x.imageSmoothingQuality = 'high';
+      x.drawImage(d.src, 0, 0, c.width, c.height);
+      return c;
+    } catch (e) { return null; } finally {
+      if (d && d.src && d.src.close) d.src.close();
+      if (d && d.url) URL.revokeObjectURL(d.url);
+    }
+  }
+  /* 같은 포스터(여러 날 본 공연)는 한 번만 불러오고, 동시에 3장까지만 */
+  async function loadAll(getBlob, items) {
+    const ids = [...new Set(items.map((r) => r.posterId).filter(Boolean))];
+    const map = new Map();
+    let k = 0;
+    const worker = async () => { while (k < ids.length) { const id = ids[k++]; map.set(id, await loadImage(getBlob, id)); } };
+    await Promise.all([worker(), worker(), worker()]);
+    return { imgs: items.map((r) => map.get(r.posterId) || null), release: () => map.forEach((c) => { if (c) { c.width = 0; c.height = 0; } }) };
   }
 
   async function ensureFonts(texts) {
@@ -489,7 +523,7 @@
       ...items.map((r) => r.title + r.venue + (r.artists || []).join(''))];
     await ensureFonts(texts);
 
-    const imgs = await Promise.all(items.map((r) => loadImage(getBlob, r.posterId)));
+    const { imgs, release } = await loadAll(getBlob, items);
     const pages = [];
     const mk = () => {
       const c = document.createElement('canvas');
@@ -515,6 +549,7 @@
       pages.push(c);
     }
     for (const im of imgs) if (im && im.close) im.close();
+    release(); // 줄인 포스터 캔버스 메모리 돌려주기
     return pages;
   }
 
