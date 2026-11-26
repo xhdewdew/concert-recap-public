@@ -209,6 +209,7 @@
     status: /^(상태|관람\s*상태|status|状態)$/i,
     memo: /^(메모|memo|note|メモ)$/i,
     seat: /^(좌석|seat|座席)$/i,
+    round: /^(회차|round|回|公演回)$/i,
   };
   const STATUS = [
     ['done', /^(완료|관람\s*완료|봤음|done|seen|済み)$/i],
@@ -263,6 +264,7 @@
           vendorOther: vendorId(get('vendor')) === 'other' ? get('vendor') : '',
           cost: isFinite(cost) ? cost : null,
           seat: get('seat'),
+          round: /^(낮|마티네|matinee|mat|昼)/i.test(get('round')) ? 'mat' : /^(밤|저녁|evening|eve|night|夜)/i.test(get('round')) ? 'eve' : '',
           status,
           memo: get('memo'),
         },

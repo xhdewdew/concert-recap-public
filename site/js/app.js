@@ -17,6 +17,9 @@
   const chartName = () => tr(ALL() ? '연도별 관람' : '월별 관람');
   const VENDORS = { nol: tr('NOL 티켓 (구 인터파크)'), ticketlink: tr('티켓링크'), melon: tr('멜론티켓'), yes24: tr('YES24 티켓'), other: tr('기타') };
   const STATUS = { done: tr('관람 완료'), planned: tr('관람 예정'), canceled: tr('취소·환불') };
+  // 회차 (선택): 하루에 두 번 본 공연을 구분한다
+  const ROUND = { mat: tr('낮공'), eve: tr('밤공') };
+  const rd = (r) => (r && ROUND[r.round] ? ' ' + ROUND[r.round] : '');
   const TESS_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
 
   let state = DB.load();
@@ -25,7 +28,8 @@
   const posterURLs = new Map();
   const app = document.getElementById('app');
   const esc = U.esc;
-  const byDate = (a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0);
+  const RO = { mat: 1, eve: 2 };
+  const byDate = (a, b) => (a.date || '').localeCompare(b.date || '') || (RO[a.round] || 0) - (RO[b.round] || 0) || (a.createdAt || 0) - (b.createdAt || 0);
 
   /* ---------- 공통 ---------- */
   function save() {
@@ -334,11 +338,11 @@
         <div class="cell info-cell">
           <span class="no">${planned ? tr('( 예정 )') : `( ${no} )`}</span>
           <span class="date">${U.md(r.date)}</span>
-          <span class="wd">${U.weekdayLong(r.date)}</span>
+          <span class="wd">${U.weekdayLong(r.date)}${r.round ? ' · ' + ROUND[r.round] : ''}</span>
           <div class="meta">
             <h3>${esc(r.title)}</h3>
             <p>${esc(r.venue || '')}</p>
-            ${planned ? `<span class="tag">${tr('관람 예정')}</span>` : groupOf.get(r.id) && groupOf.get(r.id).days > 1 ? `<span class="tag">${tr('{n}일 관람', { n: groupOf.get(r.id).days })}</span>` : ''}
+            ${planned ? `<span class="tag">${tr('관람 예정')}</span>` : groupOf.get(r.id) && groupOf.get(r.id).times > 1 ? `<span class="tag">${timesTag(groupOf.get(r.id))}</span>` : ''}
           </div>
         </div>
       </article>`);
@@ -370,7 +374,7 @@
         const other = !inYear(r);
         const st = other ? 'year' : r.status;
         return `<li><button data-act="detail" data-id="${r.id}">
-          <span class="l-date">${U.dots(r.date) || tr('날짜 없음')} ${U.weekday(r.date)}</span>
+          <span class="l-date">${U.dots(r.date) || tr('날짜 없음')} ${U.weekday(r.date)}${rd(r)}</span>
           <span class="l-title">${esc(r.title)}<small>${esc((r.artists || []).join(', '))}</small></span>
           <span class="l-venue">${esc(r.venue)}</span>
           <span class="l-cost">${U.isNum(r.cost) ? U.won(r.cost) : `<span style="color:var(--muted)">${tr('금액 미입력')}</span>`}</span>
@@ -434,6 +438,8 @@
 
   /* ---------- 리캡 ---------- */
   /* 달마다 그 달에 본 공연 포스터를 아래부터 쌓는다. 많으면 겹쳐 쌓는다 */
+  // 여러 번 본 공연 표시: 3일 관람 / 2회 관람 / 2일 · 3회
+  const timesTag = (g) => (g.times === g.days ? tr('{n}일 관람', { n: g.days }) : g.days === 1 ? tr('{n}회 관람', { n: g.times }) : tr('{d}일 · {n}회', { d: g.days, n: g.times }));
   function peakNote(st) { return I.peak(st, ', '); }
   function posterChartHTML(st) {
     const byMonth = st.bins.map(() => []);
@@ -443,7 +449,7 @@
     const note = peakNote(st);
     return `<div class="pchart" id="pchart" role="group" aria-label="${span(st)} ${chartName()}" style="grid-template-columns:repeat(${st.bins.length},minmax(0,1fr))">
       ${byMonth.map((list, i) => `<div class="pc-col${peak.has(i + 1) ? ' peak' : ''}" data-n="${list.length}" data-m="${i + 1}">
-        ${list.map((r) => `<button class="pc-tile" data-act="detail" data-id="${r.id}" aria-label="${U.md(r.date)} ${esc(r.title)}" title="${U.md(r.date)} ${esc(r.title)}">${r.posterId ? `<img data-poster="${r.posterId}" alt="">` : '<span class="fallback"></span>'}</button>`).join('')}
+        ${list.map((r) => `<button class="pc-tile" data-act="detail" data-id="${r.id}" aria-label="${U.md(r.date)}${rd(r)} ${esc(r.title)}" title="${U.md(r.date)}${rd(r)} ${esc(r.title)}">${r.posterId ? `<img data-poster="${r.posterId}" alt="">` : '<span class="fallback"></span>'}</button>`).join('')}
         ${list.length ? `<span class="pc-cnt">${list.length}</span>` : ''}
         <span class="pc-m">${I.tick(st, i)}</span>
       </div>`).join('')}
@@ -605,8 +611,8 @@
           ${topList(st.venues)}</div>
       </section>
       ${st.multiDay.length ? `<section class="multi" aria-labelledby="multi-title">
-        <h2 id="multi-title">${tr('여러 날 본 공연')}</h2>
-        <ol>${st.multiDay.map((g) => `<li><span class="m-days">${g.days}<small>${tr('일')}</small></span><span class="m-title">${esc(g.title)}<small>${g.records.map((r) => U.md(r.date)).join(' · ')}${g.period ? tr(' / 기간 {a}–{b}', { a: U.md(g.period.from), b: U.md(g.period.to) }) : ''}</small></span></li>`).join('')}</ol>
+        <h2 id="multi-title">${tr('여러 번 본 공연')}</h2>
+        <ol>${st.multiDay.map((g) => `<li><span class="m-days">${g.times === g.days ? `${g.days}<small>${tr('일')}</small>` : `${g.times}<small>${tr('회')}</small>`}</span><span class="m-title">${esc(g.title)}<small>${g.records.map((r) => U.md(r.date) + rd(r)).join(' · ')}${g.period ? tr(' / 기간 {a}–{b}', { a: U.md(g.period.from), b: U.md(g.period.to) }) : ''}</small></span></li>`).join('')}</ol>
       </section>` : ''}
       <section class="archive" aria-labelledby="arch-title">
         <div class="section-head" style="padding:0"><h2 id="arch-title">${tr(ALL() ? '지금까지의 포스터 {n}장' : '올해의 포스터 {n}장', { n: st.count })}</h2></div>
@@ -695,6 +701,10 @@
           <div class="pick-list" id="a-list" hidden></div>
         </div>
         <div class="field${a('date')}" data-f="date"><span>${tr('관람일')}</span><div id="dates"></div></div>
+        <button type="button" class="btn-line round-open" id="round-open" aria-expanded="${pre.round ? 'true' : 'false'}" aria-controls="round-box"${pre.round ? ' hidden' : ''}>${tr('+ 하루에 2회 공연이에요')}</button>
+        <fieldset class="field" id="round-box" style="border:0;margin:0;padding:0"${pre.round ? '' : ' hidden'}><legend>${tr('회차')}</legend>
+          <div class="seg">${[['mat', tr('낮공')], ['eve', tr('밤공')]].concat(rec ? [] : [['both', tr('낮·밤 둘 다')]]).map(([k, v]) => `<label><input type="radio" name="round" value="${k}"${(pre.round || '') === k ? ' checked' : ''}>${v}</label>`).join('')}</div>
+          <small>${tr('하루에 두 번 본 공연을 나눠 적을 때 골라요. ‘낮·밤 둘 다’는 기록을 2개로 저장해요.')} <button type="button" class="btn quiet" id="round-close">${tr('회차 안 쓰기')}</button></small></fieldset>
         <div class="field${a('venue')}" data-f="venue"><span>${tr('공연장')}</span>
           <input type="hidden" name="venue" value="${esc(pre.venue)}">
           <div class="chips" id="venue-picked"></div>
@@ -863,10 +873,30 @@
       if (others.length) h += `<div class="chips">${others.map((x) => `<span class="chip">${U.md(x)} ${U.weekday(x)}<button type="button" data-del="${x}" aria-label="${tr('{x} 빼기', { x: U.dots(x) })}">×</button></span>`).join('')}</div>`;
       datesBox.querySelector('.dates-top').innerHTML = h;
       datesBox.querySelector('.add-day span').textContent = list ? tr('다른 날') : selected.size ? tr('하루 더') : tr('날짜');
-      datesBox.querySelector('.dates-note').innerHTML = selected.size > 1 ? `<p class="period">${tr('{n}일 → 기록 {n}개로 저장', { n: selected.size })}</p>` : '';
-      const costLbl = f.cost && f.cost.closest('label').querySelector('span');
-      if (costLbl) costLbl.textContent = selected.size > 1 ? tr('하루당 낸 금액 (원)') : tr('내가 낸 금액 (원)');
+      drawNote();
     };
+    // 저장될 기록 수 안내 + 금액 칸 이름 (날짜 수 × 회차)
+    function drawNote() {
+      const both = (f.querySelector('input[name=round]:checked') || {}).value === 'both';
+      const days = Math.max(1, selected.size), n = days * (both ? 2 : 1);
+      const note = datesBox.querySelector('.dates-note');
+      if (note) note.innerHTML = n > 1 ? `<p class="period">${both ? (days > 1 ? tr('{d}일 × 낮·밤 → 기록 {n}개로 저장', { d: days, n }) : tr('낮·밤 → 기록 2개로 저장')) : tr('{n}일 → 기록 {n}개로 저장', { n })}</p>` : '';
+      const costLbl = f.cost && f.cost.closest('label').querySelector('span');
+      if (costLbl) costLbl.textContent = both ? tr('한 회당 낸 금액 (원)') : selected.size > 1 ? tr('하루당 낸 금액 (원)') : tr('내가 낸 금액 (원)');
+    }
+    f.querySelectorAll('input[name=round]').forEach((x) => x.addEventListener('change', drawNote));
+    // 회차 칸은 '하루에 2회 공연이에요'를 눌러야 열린다 (헷갈리지 않게)
+    const roundOpen = f.querySelector('#round-open'), roundBox = f.querySelector('#round-box');
+    const setRound = (v) => { f.querySelectorAll('input[name=round]').forEach((x) => { x.checked = x.value === v; }); drawNote(); };
+    roundOpen.addEventListener('click', () => {
+      roundOpen.hidden = true; roundOpen.setAttribute('aria-expanded', 'true'); roundBox.hidden = false;
+      setRound(rec ? 'mat' : 'both');
+      roundBox.querySelector('input[name=round]:checked').focus();
+    });
+    f.querySelector('#round-close').addEventListener('click', () => {
+      roundBox.hidden = true; roundOpen.hidden = false; roundOpen.setAttribute('aria-expanded', 'false');
+      setRound(''); roundOpen.focus();
+    });
     drawDates();
     // 달력을 한 번 여는 동안(누름 → 닫힘) 바뀐 날짜는 '추가'가 아니라 '교체'로 본다.
     // 그래야 아이폰이 먼저 넣은 '오늘'이나, 연도를 치는 중간값이 쌓이지 않는다.
@@ -1005,8 +1035,12 @@
       if (problems.length) { err.textContent = problems.join(' '); err.hidden = false; return; }
       err.hidden = true;
       const ids = new Set(rec ? [rec.id] : []);
+      const roundPick = (f.querySelector('input[name=round]:checked') || {}).value || '';
+      const rounds = roundPick === 'both' ? ['mat', 'eve'] : [roundPick];
+      // 같은 날·같은 공연이라도 회차가 서로 다르면 중복이 아니다
       const dups = okDates.filter((dt) => state.records.some((r) => !ids.has(r.id) && r.date === dt &&
-        ((kopisId && r.kopisId === kopisId) || S.norm(r.title) === S.norm(title))));
+        ((kopisId && r.kopisId === kopisId) || S.norm(r.title) === S.norm(title)) &&
+        rounds.some((ro) => !ro || !r.round || ro === r.round)));
       if (dups.length && !dupConfirmed) {
         const w = d.querySelector('#dup-warn');
         w.innerHTML = tr('<strong>{d}에 같은 공연 기록이 이미 있어요.</strong> 그래도 저장하려면 한 번 더 누르세요.', { d: dups.map(U.md).join(', ') });
@@ -1041,21 +1075,23 @@
         err.textContent = tr('포스터를 저장하지 못했어요.'); err.hidden = false; return;
       }
       const now = Date.now();
-      okDates.forEach((dt, i) => {
+      let made = 0;
+      okDates.forEach((dt) => rounds.forEach((round) => {
         const status = chosen === 'canceled' || statusTouched || rec ? chosen : (dt > today ? 'planned' : 'done');
         if (rec) {
-          const out = Object.assign({}, rec, base, { date: dt, status, posterId, posterRatio });
+          const out = Object.assign({}, rec, base, { date: dt, round, status, posterId, posterRatio });
           const k = state.records.findIndex((r) => r.id === rec.id);
           state.records[k] = out;
         } else {
-          state.records.push(Object.assign({ id: U.uid(), createdAt: now + i, source: (opts.prefill && opts.prefill.source) || 'manual' }, base, { date: dt, status, posterId, posterRatio }));
+          state.records.push(Object.assign({ id: U.uid(), createdAt: now + made, source: (opts.prefill && opts.prefill.source) || 'manual' }, base, { date: dt, round, status, posterId, posterRatio }));
         }
-      });
+        made += 1;
+      }));
       save();
       if (oldPoster && oldPoster !== posterId) await releasePoster(oldPoster);
       d.close();
       render();
-      toast(rec ? tr('저장했어요') : okDates.length > 1 ? tr('{n}일 기록했어요', { n: okDates.length }) : tr('기록했어요'));
+      toast(rec ? tr('저장했어요') : made > 1 ? (rounds.length > 1 ? tr('기록 {n}개를 저장했어요', { n: made }) : tr('{n}일 기록했어요', { n: made })) : tr('기록했어요'));
     });
     setTimeout(() => { if (!rec && !pre.title) f.title.focus(); }, 50);
   }
@@ -1073,7 +1109,7 @@
           <div>${r.posterId ? `<img data-poster="${r.posterId}" data-title="${esc(r.title)}" alt="${tr('{t} 포스터', { t: esc(r.title) })}">` : `<span class="fallback-poster" style="position:relative;inset:auto;aspect-ratio:1/1.414;display:grid">${esc(r.title)}</span>`}</div>
           <div>
             <div class="d-date">${U.md(r.date)}</div>
-            <p style="margin:6px 0 0;color:var(--accent-text)">${tr('{y}년 {w}', { y: U.dots(r.date).slice(0, 4), w: U.weekdayLong(r.date) })}</p>
+            <p style="margin:6px 0 0;color:var(--accent-text)">${tr('{y}년 {w}', { y: U.dots(r.date).slice(0, 4), w: U.weekdayLong(r.date) })}${r.round ? ' · ' + ROUND[r.round] : ''}</p>
             <h3>${esc(r.title)}</h3>
             <dl>
               <dt>${tr('아티스트')}</dt><dd>${esc((r.artists || []).join(', ')) || tr('미입력')}</dd>
@@ -1082,7 +1118,7 @@
               <dt>${tr('예매처')}</dt><dd>${r.vendor === 'other' ? esc(r.vendorOther || VENDORS.other) : VENDORS[r.vendor] || tr('미입력')}</dd>
               <dt>${tr('본인 부담')}</dt><dd>${U.won(r.cost)}</dd>
               <dt>${tr('상태')}</dt><dd>${STATUS[r.status] || ''}${other || r.status !== 'done' ? tr(' · 통계 제외') : ''}</dd>
-              ${same.length > 1 ? `<dt>${tr('관람')}</dt><dd>${tr('{n}일', { n: same.length })} · ${same.map((x) => U.md(x.date)).join(', ')}</dd>` : ''}
+              ${same.length > 1 ? `<dt>${tr('관람')}</dt><dd>${timesTag({ days: new Set(same.map((x) => x.date)).size, times: same.length })} · ${same.map((x) => U.md(x.date) + rd(x)).join(', ')}</dd>` : ''}
               ${r.period ? `<dt>${tr('공연 기간')}</dt><dd>${U.dots(r.period.from)} – ${U.md(r.period.to)}${span ? ` (${tr('{n}일', { n: span.length })})` : ''}</dd>` : ''}
             </dl>
             ${r.memo ? `<p class="memo">${esc(r.memo)}</p>` : ''}
@@ -1102,7 +1138,7 @@
       openForm({ prefill: { title: r.title, artists: r.artists, venue: r.venue, vendor: r.vendor, vendorOther: r.vendorOther, cost: r.cost, date: '', status: '', kopisId: r.kopisId || '', period: r.period || null, sharePoster: r.posterId || null, sharePosterRatio: r.posterRatio || null } });
     });
     d.querySelector('#del').addEventListener('click', async () => {
-      if (!(await ask(tr('‘{t}’ ({d}) 기록을 삭제할까요? 되돌릴 수 없어요.', { t: r.title, d: U.dots(r.date) }), { title: tr('기록 삭제'), ok: tr('삭제'), danger: true }))) return;
+      if (!(await ask(tr('‘{t}’ ({d}) 기록을 삭제할까요? 되돌릴 수 없어요.', { t: r.title, d: U.dots(r.date) + rd(r) }), { title: tr('기록 삭제'), ok: tr('삭제'), danger: true }))) return;
       state.records = state.records.filter((x) => x.id !== r.id);
       save();
       await releasePoster(r.posterId);
@@ -1438,12 +1474,12 @@
     d.querySelector('#csv-out').addEventListener('click', () => {
       // 표 제목·상태 글자는 화면 언어로 (다시 읽을 때도 세 언어 모두 알아본다)
       const CSV = {
-        ko: [['공연명', '아티스트', '관람일', '공연장', '좌석', '예매처', '본인 부담 금액', '상태', '메모'], { done: '완료', planned: '예정', canceled: '취소' }],
-        en: [['Title', 'Artists', 'Date', 'Venue', 'Seat', 'Vendor', 'Cost', 'Status', 'Memo'], { done: 'done', planned: 'planned', canceled: 'canceled' }],
-        ja: [['公演名', 'アーティスト', '観覧日', '会場', '座席', '購入先', '自己負担額', '状態', 'メモ'], { done: '済み', planned: '予定', canceled: 'キャンセル' }],
+        ko: [['공연명', '아티스트', '관람일', '회차', '공연장', '좌석', '예매처', '본인 부담 금액', '상태', '메모'], { done: '완료', planned: '예정', canceled: '취소' }],
+        en: [['Title', 'Artists', 'Date', 'Round', 'Venue', 'Seat', 'Vendor', 'Cost', 'Status', 'Memo'], { done: 'done', planned: 'planned', canceled: 'canceled' }],
+        ja: [['公演名', 'アーティスト', '観覧日', '回', '会場', '座席', '購入先', '自己負担額', '状態', 'メモ'], { done: '済み', planned: '予定', canceled: 'キャンセル' }],
       }[I.lang];
       const head = CSV[0];
-      const lines = state.records.slice().sort(byDate).map((r) => [r.title, (r.artists || []).join(';'), r.date, r.venue, r.seat || '',
+      const lines = state.records.slice().sort(byDate).map((r) => [r.title, (r.artists || []).join(';'), r.date, ROUND[r.round] || '', r.venue, r.seat || '',
         r.vendor === 'other' ? r.vendorOther : (VENDORS[r.vendor] || ''), U.isNum(r.cost) ? r.cost : '', CSV[1][r.status] || '', r.memo || ''].map(P.csvCell).join(','));
       download(new Blob(['﻿' + [head.join(',')].concat(lines).join('\n')], { type: 'text/csv;charset=utf-8' }), `concert-recap-${U.todayStr().replace(/-/g, '')}.csv`);
     });
@@ -1456,7 +1492,7 @@
     const html = `${head(tr('중복 확인'))}
       <div class="dlg-body">
         ${st.duplicates.map((g, gi) => `<div class="dup-group"><h3>${tr(g.label)}</h3>
-          ${g.records.map((r) => `<div class="dup-row"><span><strong>${esc(r.title)}</strong><small>${U.dots(r.date)} · ${esc(r.venue || tr('공연장 미입력'))} · ${STATUS[r.status]} · ${U.won(r.cost)}</small></span>
+          ${g.records.map((r) => `<div class="dup-row"><span><strong>${esc(r.title)}</strong><small>${U.dots(r.date)}${rd(r)} · ${esc(r.venue || tr('공연장 미입력'))} · ${STATUS[r.status]} · ${U.won(r.cost)}</small></span>
             <span style="display:flex;gap:14px"><button class="btn" data-open="${r.id}" type="button">${tr('보기')}</button><button class="btn btn-danger" data-del="${r.id}" type="button" style="border-bottom-color:currentColor">${tr('삭제')}</button></span></div>`).join('')}
           <div><button class="btn-line" data-ok="${gi}" type="button">${tr('중복 아님')}</button></div></div>`).join('')}
       </div>
@@ -1467,7 +1503,7 @@
       if (o) { d.close(); openDetail(o.dataset.open); }
       if (del) {
         const r = state.records.find((x) => x.id === del.dataset.del);
-        if (!r || !(await ask(tr('‘{t}’ ({d}) 기록을 삭제할까요?', { t: r.title, d: U.dots(r.date) }), { title: tr('기록 삭제'), ok: tr('삭제'), danger: true }))) return;
+        if (!r || !(await ask(tr('‘{t}’ ({d}) 기록을 삭제할까요?', { t: r.title, d: U.dots(r.date) + rd(r) }), { title: tr('기록 삭제'), ok: tr('삭제'), danger: true }))) return;
         state.records = state.records.filter((x) => x.id !== r.id);
         await releasePoster(r.posterId);
         save(); d.close(); render(); openDups();
@@ -1482,7 +1518,7 @@
   /* ---------- 계산 근거 ---------- */
   function openBasis(k) {
     const st = stats();
-    const row = (r, right, cls) => `<li class="${cls || ''}"><span>${U.dots(r.date)}</span><span>${esc(r.title)}</span><span class="r">${right}</span></li>`;
+    const row = (r, right, cls) => `<li class="${cls || ''}"><span>${U.dots(r.date)}${rd(r)}</span><span>${esc(r.title)}</span><span class="r">${right}</span></li>`;
     let title = '', body = '';
     if (k === 'count') {
       title = tr('관람 {n}회', { n: st.count });

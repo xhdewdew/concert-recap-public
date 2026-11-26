@@ -419,6 +419,7 @@
   }
 
   let MULTI = false;
+  const ROUND = { mat: tr('낮공'), eve: tr('밤공') };
   // 크게 쓰는 숫자(2026 / ~2026)와 글로 쓰는 기간(2026 / 2019–2026)
   function years(st, opts) {
     if (st && st.all) return { big: '~' + st.to, text: st.from === st.to ? String(st.to) : st.from + '–' + st.to };
@@ -479,7 +480,7 @@
         } else fallbackPoster(ctx, t, r, x + pad, y + pad, cw - pad * 2, ch - cap - pad);
         const fs = format === 'story' ? 22 : 18;
         font(ctx, 400, fs); ctx.fillStyle = t.accentText;
-        ctx.fillText(`( ${startNo + i} )  ${MULTI ? U.dots(r.date) : U.md(r.date)}`, x + pad, y + ch - cap + fs * 1.4);
+        ctx.fillText(`( ${startNo + i} )  ${MULTI ? U.dots(r.date) : U.md(r.date)}${ROUND[r.round] ? ' ' + ROUND[r.round] : ''}`, x + pad, y + ch - cap + fs * 1.4);
         font(ctx, 700, fs); ctx.fillStyle = t.ink;
         ctx.fillText(fit(ctx, r.title, cw - pad * 2), x + pad, y + ch - cap + fs * 2.75);
       });
@@ -513,7 +514,7 @@
     while (ds > 40 && measureTracked(ctx, U.md(r.date), -ds * 0.05) > inner) { ds -= 2; font(ctx, 400, ds); }
     tracked(ctx, U.md(r.date), x + p - 3, y + p + 26 + ds * 0.86, -ds * 0.05);
     font(ctx, 400, 24);
-    ctx.fillText(U.weekdayLong(r.date), x + p, y + p + 26 + ds * 0.86 + 40);
+    ctx.fillText(U.weekdayLong(r.date) + (ROUND[r.round] ? ' · ' + ROUND[r.round] : ''), x + p, y + p + 26 + ds * 0.86 + 40);
     const ts = format === 'story' ? 25 : 22;
     font(ctx, 700, ts); ctx.fillStyle = t.ink;
     const lines = wrap(ctx, r.title, inner, 3);

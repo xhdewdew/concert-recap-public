@@ -10,7 +10,11 @@
   const norm = (s) => String(s || '').normalize('NFC').toLowerCase().replace(STRIP, '');
   const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
   const isNum = (n) => typeof n === 'number' && isFinite(n);
-  const byDate = (a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0);
+  // 회차: 낮공(mat) → 밤공(eve) 순서
+  const RO = { mat: 1, eve: 2 };
+  const byDate = (a, b) => (a.date || '').localeCompare(b.date || '') || (RO[a.round] || 0) - (RO[b.round] || 0) || (a.createdAt || 0) - (b.createdAt || 0);
+  // 같은 날 기록들이 서로 다른 회차(낮공·밤공)로 나뉘어 있으면 중복이 아니다
+  const diffRounds = (arr) => arr.every((r) => r.round) && new Set(arr.map((r) => r.round)).size === arr.length;
 
   const REASON = {
     nodate: '관람일 없음',
@@ -44,7 +48,7 @@
     const ign = new Set(ignore || []);
     const groups = [];
     const add = (kind, label, arr) => {
-      if (arr.length < 2) return;
+      if (arr.length < 2 || diffRounds(arr)) return;
       const ids = arr.map((r) => r.id).sort();
       const key = ids.join('|');
       if (ign.has(key)) return;
@@ -128,8 +132,10 @@
       if (!showMap.has(k)) showMap.set(k, { key: k, title: r.title, records: [] });
       showMap.get(k).records.push(r);
     }
-    const shows = [...showMap.values()].map((g) => Object.assign(g, { days: g.records.length, period: g.records.find((r) => r.period) ? g.records.find((r) => r.period).period : null }));
-    const multiDay = shows.filter((g) => g.days > 1).sort((a, b) => b.days - a.days || byDate(a.records[0], b.records[0]));
+    const shows = [...showMap.values()].map((g) => Object.assign(g, { days: new Set(g.records.map((r) => r.date)).size, times: g.records.length, period: g.records.find((r) => r.period) ? g.records.find((r) => r.period).period : null }));
+    // 여러 번 본 공연: 여러 날이든, 하루 낮·밤이든 두 번 이상
+    const multiDay = shows.filter((g) => g.times > 1).map((g) => Object.assign(g, { records: g.records.slice().sort(byDate) }))
+      .sort((a, b) => b.times - a.times || b.days - a.days || byDate(a.records[0], b.records[0]));
 
     const excludedCount = {};
     for (const e of excluded) excludedCount[e.reason] = (excludedCount[e.reason] || 0) + 1;
