@@ -595,3 +595,10 @@ details.basis dl { margin-top: 8px; }
 .pc-col.peak .pc-m, .pc-col.peak .pc-cnt { letter-spacing: normal; line-height: normal; }
 .year-mark.wide { font-size: clamp(96px, 14vw, 250px); }
 @media (max-width: 699px) { .year-mark.wide { font-size: 33vw; } }
+/* 고를 칸이 4개면 한 줄에 4칸 */
+.seg:has(> label:nth-child(4)) { grid-template-columns: repeat(4, 1fr); }
+.seg:has(> label:nth-child(4)) label { padding-left: 2px; padding-right: 2px; word-break: keep-all; }
+/* '하루에 2회 공연이에요' 버튼: 눌러야 회차 칸이 열린다 */
+.round-open { justify-self: start; align-self: start; padding: 10px 14px; font-size: var(--f-s); }
+#round-box small .btn { padding: 0; margin-left: 4px; font-size: inherit; }
+.seg:not(:has(> label:nth-child(3))) { grid-template-columns: repeat(2, 1fr); }
